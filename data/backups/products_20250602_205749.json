@@ -105,10 +105,25 @@
     "status": "active"
   },
   {
+    "id": "8",
+    "name": "Tablet 10-inch",
+    "price": 18000,
+    "stock": 6,
+    "category": "Electronics",
+    "business_id": "mama_jane_electronics",
+    "description": "Android tablet perfect for entertainment, reading, and light work",
+    "sku": "TAB-10-001",
+    "brand": "Generic",
+    "warranty": "6 months",
+    "created_at": "2024-01-05T11:00:00Z",
+    "updated_at": "2024-01-14T12:30:00Z",
+    "status": "active"
+  },
+  {
     "id": "101",
     "name": "Gaming Laptop",
     "price": 95000,
-    "stock": 1,
+    "stock": 2,
     "category": "Electronics",
     "business_id": "pete_tech_store",
     "description": "High-end gaming laptop with dedicated graphics card and RGB keyboard",
@@ -116,7 +131,7 @@
     "brand": "MSI",
     "warranty": "24 months",
     "created_at": "2024-01-06T09:00:00Z",
-    "updated_at": "2025-06-02T21:04:42.477253",
+    "updated_at": "2024-01-15T14:20:00Z",
     "status": "active"
   },
   {
