@@ -544,3 +544,102 @@ def bulk_update_prices(business_id: str, price_adjustment: float,
             "message": f"Error in bulk price update: {str(e)}",
             "data": None
         }
+
+
+# =============================================================================
+# TOOL DEFINITIONS FOR REGISTRY
+# =============================================================================
+
+vendor_tools = [
+    {
+        "name": "add_product",
+        "description": "Add a new product to business inventory. Saves to JSON database.",
+        "handler": add_product_handler,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "business_id": {"type": "string", "description": "Business ID"},
+                "name": {"type": "string", "description": "Product name"},
+                "price": {"type": "number", "description": "Product price"},
+                "stock": {"type": "integer", "description": "Stock quantity"},
+                "category": {"type": "string", "description": "Product category", "default": "Electronics"},
+                "description": {"type": "string", "description": "Product description", "default": ""},
+                "brand": {"type": "string", "description": "Product brand", "default": "Generic"},
+                "warranty": {"type": "string", "description": "Warranty period", "default": "3 months"}
+            },
+            "required": ["business_id", "name", "price", "stock"]
+        }
+    },
+    {
+        "name": "show_products", 
+        "description": "Display all products for a business. Loads from JSON database.",
+        "handler": show_products_handler,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "business_id": {"type": "string", "description": "Business ID"},
+                "category": {"type": "string", "description": "Filter by category"},
+                "search_term": {"type": "string", "description": "Search term"}
+            },
+            "required": ["business_id"]
+        }
+    },
+    {
+        "name": "update_product",
+        "description": "Update an existing product. Saves changes to JSON database.",
+        "handler": update_product_handler,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "business_id": {"type": "string", "description": "Business ID"},
+                "product_identifier": {"type": "string", "description": "Product ID or name"},
+                "name": {"type": "string", "description": "New product name"},
+                "price": {"type": "number", "description": "New price"},
+                "stock": {"type": "integer", "description": "New stock quantity"},
+                "category": {"type": "string", "description": "New category"},
+                "description": {"type": "string", "description": "New description"},
+                "brand": {"type": "string", "description": "New brand"},
+                "warranty": {"type": "string", "description": "New warranty"}
+            },
+            "required": ["business_id", "product_identifier"]
+        }
+    },
+    {
+        "name": "delete_product",
+        "description": "Delete a product from inventory. Removes from JSON database.",
+        "handler": delete_product_handler,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "business_id": {"type": "string", "description": "Business ID"},
+                "product_identifier": {"type": "string", "description": "Product ID or name to delete"}
+            },
+            "required": ["business_id", "product_identifier"]
+        }
+    },
+    {
+        "name": "get_business_stats",
+        "description": "Get comprehensive business statistics and analytics.",
+        "handler": get_business_stats,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "business_id": {"type": "string", "description": "Business ID"}
+            },
+            "required": ["business_id"]
+        }
+    },
+    {
+        "name": "get_low_stock_products",
+        "description": "Get products with low stock levels.",
+        "handler": get_low_stock_products,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "business_id": {"type": "string", "description": "Business ID"},
+                "threshold": {"type": "integer", "description": "Stock threshold", "default": 5}
+            },
+            "required": ["business_id"]
+        }
+    }
+]

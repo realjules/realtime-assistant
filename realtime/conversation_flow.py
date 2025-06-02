@@ -134,7 +134,9 @@ I'm an AI assistant built for Kenyan businesses and their customers.
 
 **Just say "vendor" or "customer" to get started!**"""
 
-    return {"message": message, "user_type": user_type}
+    # FIXED: Return only the message string, not a dictionary
+    return message
+
 
 # =============================================================================
 # INTENT RECOGNITION

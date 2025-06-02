@@ -19,8 +19,8 @@ sys.path.insert(0, str(project_root))
 try:
     from utils.simple_db import db, initialize_database
     from realtime.assistant import SasabotAssistant
-    from realtime.vendor_tools import vendor_tools
-    from realtime.customer_tools import customer_tools
+    # from realtime.vendor_tools import vendor_tools
+    # from realtime.customer_tools import customer_tools
 except ImportError as e:
     print(f"❌ Import Error: {e}")
     print("Please ensure all required files are in place.")
@@ -205,29 +205,7 @@ async def start():
 
 {get_recent_activity()}
 
-💡 **How to use Sasabot:**
-
-**For Customers:**
-• "Show me all available products"
-• "Search for phones under 50000"
-• "I want to buy a laptop"
-• "Place an order for product ID 1"
-• "Check status of order ORD001"
-
-**For Vendors:**
-• "Add a new product"
-• "Update product ID 5 price to 30000"
-• "Show my products"
-• "Delete product ID 8"
-• "Show recent orders"
-
-**Database Commands:**
-• "Show database stats"
-• "Show recent activity"
-• "Create backup"
-
-🚀 **Type your message below to get started!**
-    """
+"""
     
     await cl.Message(content=welcome_message).send()
     
