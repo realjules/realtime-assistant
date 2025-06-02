@@ -1,290 +1,280 @@
-"""
-Demo Data
-Sample business and product data for demonstration purposes
-"""
-
 import chainlit as cl
 import random
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
+# Import the database helper
+from utils.simple_db import db
+
 # =============================================================================
-# DEMO BUSINESS DATA
+# DYNAMIC DATA LOADING FROM JSON FILES
 # =============================================================================
 
-DEMO_BUSINESSES = {
-    "mama_jane_electronics": {
-        "name": "Mama Jane's Electronics",
-        "owner_phone": "+254700000001",
-        "description": "Quality electronics and accessories in Nairobi",
-        "location": "Nairobi, Kenya",
-        "established": "2020-01-15",
-        "products": [
-            {
-                "id": "1",
-                "name": "Samsung Galaxy A54",
-                "price": 35000,
-                "stock": 8,
-                "category": "Electronics",
-                "description": "Latest Samsung smartphone with excellent camera and long battery life"
-            },
-            {
-                "id": "2", 
-                "name": "Dell Inspiron Laptop",
-                "price": 55000,
-                "stock": 3,
-                "category": "Electronics",
-                "description": "High-performance laptop perfect for work and study. Intel i5 processor, 8GB RAM"
-            },
-            {
-                "id": "3",
-                "name": "Sony Wireless Headphones",
-                "price": 4500,
-                "stock": 15,
-                "category": "Accessories",
-                "description": "Premium wireless headphones with noise cancellation and superior sound quality"
-            },
-            {
-                "id": "4",
-                "name": "iPhone 13",
-                "price": 75000,
-                "stock": 2,
-                "category": "Electronics", 
-                "description": "Apple iPhone 13 with advanced camera system and A15 Bionic chip"
-            },
-            {
-                "id": "5",
-                "name": "MacBook Air M1",
-                "price": 120000,
-                "stock": 1,
-                "category": "Electronics",
-                "description": "Apple MacBook Air with M1 chip. Ultra-fast performance and all-day battery"
-            },
-            {
-                "id": "6",
-                "name": "Bluetooth Speaker",
-                "price": 2500,
-                "stock": 20,
-                "category": "Accessories",
-                "description": "Portable Bluetooth speaker with excellent sound quality and waterproof design"
-            },
-            {
-                "id": "7",
-                "name": "Phone Charger Cable",
-                "price": 500,
-                "stock": 50,
-                "category": "Accessories",
-                "description": "Universal USB charging cable compatible with most smartphones"
-            },
-            {
-                "id": "8",
-                "name": "Tablet 10-inch",
-                "price": 18000,
-                "stock": 6,
-                "category": "Electronics",
-                "description": "Android tablet perfect for entertainment, reading, and light work"
-            }
-        ],
-        "sales_data": {
-            "daily": {
-                "revenue": 85000,
-                "orders": 4,
-                "customers": 4,
-                "top_product": "Samsung Galaxy A54"
-            },
-            "weekly": {
-                "revenue": 520000,
-                "orders": 22,
-                "customers": 18,
-                "top_product": "Dell Inspiron Laptop"
-            },
-            "monthly": {
-                "revenue": 2100000,
-                "orders": 89,
-                "customers": 67,
-                "top_product": "Sony Wireless Headphones"
-            },
-            "quarterly": {
-                "revenue": 6300000,
-                "orders": 245,
-                "customers": 189,
-                "top_product": "Samsung Galaxy A54"
-            },
-            "yearly": {
-                "revenue": 24500000,
-                "orders": 892,
-                "customers": 543,
-                "top_product": "Bluetooth Speaker"
-            }
-        },
-        "business_metrics": {
-            "customer_satisfaction": 4.7,
-            "average_order_value": 21250,
-            "repeat_customer_rate": 0.35,
-            "inventory_turnover": 8.2
-        }
-    },
+def load_businesses_from_json() -> Dict:
+    """Load businesses from JSON file"""
+    try:
+        businesses = db.get_businesses()
+        print(f"✅ Loaded {len(businesses)} businesses from JSON")
+        return businesses
+    except Exception as e:
+        print(f"❌ Error loading businesses: {e}")
+        return {}
+
+def load_products_from_json() -> List[Dict]:
+    """Load products from JSON file"""
+    try:
+        products = db.get_products()
+        print(f"✅ Loaded {len(products)} products from JSON")
+        return products
+    except Exception as e:
+        print(f"❌ Error loading products: {e}")
+        return []
+
+def load_orders_from_json() -> List[Dict]:
+    """Load orders from JSON file"""
+    try:
+        orders = db.get_orders()
+        print(f"✅ Loaded {len(orders)} orders from JSON")
+        return orders
+    except Exception as e:
+        print(f"❌ Error loading orders: {e}")
+        return []
+
+def get_products_for_business(business_id: str) -> List[Dict]:
+    """Get all products for a specific business from JSON"""
+    try:
+        products = db.get_products_by_business(business_id)
+        return products
+    except Exception as e:
+        print(f"❌ Error loading products for business {business_id}: {e}")
+        return []
+
+def get_demo_businesses() -> Dict:
+    """Get businesses data - loads from JSON"""
+    businesses_data = load_businesses_from_json()
     
-    "pete_tech_store": {
-        "name": "Pete's Tech Paradise",
-        "owner_phone": "+254700000002", 
-        "description": "Your one-stop shop for all tech needs",
-        "location": "Mombasa, Kenya",
-        "established": "2019-08-20",
-        "products": [
-            {
-                "id": "101",
-                "name": "Gaming Laptop",
-                "price": 95000,
-                "stock": 2,
-                "category": "Electronics",
-                "description": "High-end gaming laptop with dedicated graphics card and RGB keyboard"
-            },
-            {
-                "id": "102",
-                "name": "Wireless Mouse",
-                "price": 1500,
-                "stock": 25,
-                "category": "Accessories",
-                "description": "Ergonomic wireless mouse with precision tracking"
-            },
-            {
-                "id": "103",
-                "name": "External Hard Drive 1TB",
-                "price": 6500,
-                "stock": 12,
-                "category": "Storage",
-                "description": "Portable external hard drive for backup and extra storage"
-            }
-        ],
-        "sales_data": {
-            "daily": {"revenue": 47500, "orders": 2, "customers": 2},
-            "weekly": {"revenue": 285000, "orders": 12, "customers": 10},
-            "monthly": {"revenue": 1140000, "orders": 48, "customers": 39}
+    # Add products to each business (for backward compatibility)
+    for business_id, business in businesses_data.items():
+        business_products = get_products_for_business(business_id)
+        business['products'] = business_products
+    
+    return businesses_data
+
+# Main variable that existing code expects - now loads from JSON
+DEMO_BUSINESSES = get_demo_businesses()
+
+# Sample orders - now loads from JSON
+SAMPLE_ORDERS = load_orders_from_json()
+
+# =============================================================================
+# DATA MODIFICATION FUNCTIONS
+# =============================================================================
+
+def add_product_to_json(business_id: str, product_data: Dict) -> bool:
+    """Add a new product and save to JSON"""
+    try:
+        # Ensure business_id is set
+        product_data['business_id'] = business_id
+        
+        # Add the product using database helper
+        success = db.add_product(product_data)
+        
+        if success:
+            # Reload the DEMO_BUSINESSES to reflect changes
+            global DEMO_BUSINESSES
+            DEMO_BUSINESSES = get_demo_businesses()
+            print(f"✅ Added product '{product_data.get('name')}' to JSON")
+        
+        return success
+    except Exception as e:
+        print(f"❌ Error adding product to JSON: {e}")
+        return False
+
+def update_product_in_json(product_id: str, updates: Dict) -> bool:
+    """Update a product and save to JSON"""
+    try:
+        success = db.update_product(product_id, updates)
+        
+        if success:
+            # Reload the DEMO_BUSINESSES to reflect changes
+            global DEMO_BUSINESSES
+            DEMO_BUSINESSES = get_demo_businesses()
+            print(f"✅ Updated product {product_id} in JSON")
+        
+        return success
+    except Exception as e:
+        print(f"❌ Error updating product in JSON: {e}")
+        return False
+
+def delete_product_from_json(product_id: str) -> bool:
+    """Delete a product and save to JSON"""
+    try:
+        success = db.delete_product(product_id)
+        
+        if success:
+            # Reload the DEMO_BUSINESSES to reflect changes
+            global DEMO_BUSINESSES
+            DEMO_BUSINESSES = get_demo_businesses()
+            print(f"✅ Deleted product {product_id} from JSON")
+        
+        return success
+    except Exception as e:
+        print(f"❌ Error deleting product from JSON: {e}")
+        return False
+
+def add_order_to_json(order_data: Dict) -> bool:
+    """Add a new order and save to JSON"""
+    try:
+        success = db.add_order(order_data)
+        
+        if success:
+            # Reload orders
+            global SAMPLE_ORDERS
+            SAMPLE_ORDERS = load_orders_from_json()
+            print(f"✅ Added order to JSON")
+        
+        return success
+    except Exception as e:
+        print(f"❌ Error adding order to JSON: {e}")
+        return False
+
+def update_product_stock(product_id: str, new_stock: int) -> bool:
+    """Update product stock level"""
+    try:
+        return update_product_in_json(product_id, {"stock": new_stock})
+    except Exception as e:
+        print(f"❌ Error updating stock for product {product_id}: {e}")
+        return False
+
+def reduce_product_stock(product_id: str, quantity: int) -> bool:
+    """Reduce product stock by specified quantity"""
+    try:
+        product = db.get_product_by_id(product_id)
+        if not product:
+            print(f"❌ Product {product_id} not found")
+            return False
+        
+        current_stock = product.get('stock', 0)
+        new_stock = max(0, current_stock - quantity)
+        
+        return update_product_stock(product_id, new_stock)
+    except Exception as e:
+        print(f"❌ Error reducing stock for product {product_id}: {e}")
+        return False
+
+# =============================================================================
+# DATA REFRESH FUNCTIONS
+# =============================================================================
+
+def reload_demo_data() -> Dict:
+    """Reload all demo data from JSON files"""
+    try:
+        global DEMO_BUSINESSES, SAMPLE_ORDERS
+        
+        # Reload all data
+        DEMO_BUSINESSES = get_demo_businesses()
+        SAMPLE_ORDERS = load_orders_from_json()
+        
+        stats = db.get_stats()
+        print(f"✅ Reloaded demo data: {stats}")
+        
+        return {
+            "success": True,
+            "businesses": len(DEMO_BUSINESSES),
+            "products": stats.get('products_count', 0),
+            "orders": len(SAMPLE_ORDERS),
+            "message": "Demo data reloaded from JSON files"
         }
-    }
-}
+    except Exception as e:
+        print(f"❌ Error reloading demo data: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "message": "Failed to reload demo data"
+        }
+
+def get_fresh_business_data(business_id: str) -> Optional[Dict]:
+    """Get fresh business data from JSON"""
+    try:
+        businesses = load_businesses_from_json()
+        business = businesses.get(business_id)
+        
+        if business:
+            # Add fresh products
+            business['products'] = get_products_for_business(business_id)
+        
+        return business
+    except Exception as e:
+        print(f"❌ Error getting fresh business data: {e}")
+        return None
+
+def get_fresh_products() -> List[Dict]:
+    """Get fresh products data from JSON"""
+    return load_products_from_json()
+
+def get_fresh_orders() -> List[Dict]:
+    """Get fresh orders data from JSON"""
+    return load_orders_from_json()
 
 # =============================================================================
-# SAMPLE ORDERS DATA
+# SEARCH AND FILTER FUNCTIONS
 # =============================================================================
 
-SAMPLE_ORDERS = [
-    {
-        "id": "ORD001",
-        "customer_name": "John Kamau",
-        "customer_phone": "+254701234567",
-        "product": "Samsung Galaxy A54",
-        "quantity": 1,
-        "amount": 35000,
-        "status": "delivered",
-        "business_id": "mama_jane_electronics",
-        "created_at": "2024-01-15T10:30:00",
-        "delivery_address": "Westlands, Nairobi"
-    },
-    {
-        "id": "ORD002", 
-        "customer_name": "Mary Wanjiku",
-        "customer_phone": "+254702345678",
-        "product": "Dell Inspiron Laptop",
-        "quantity": 1,
-        "amount": 55000,
-        "status": "shipped",
-        "business_id": "mama_jane_electronics",
-        "created_at": "2024-01-16T14:15:00",
-        "delivery_address": "Karen, Nairobi"
-    },
-    {
-        "id": "ORD003",
-        "customer_name": "Peter Ochieng",
-        "customer_phone": "+254703456789",
-        "product": "Sony Wireless Headphones",
-        "quantity": 2,
-        "amount": 9000,
-        "status": "processing",
-        "business_id": "mama_jane_electronics", 
-        "created_at": "2024-01-16T16:45:00",
-        "delivery_address": "Kilimani, Nairobi"
-    },
-    {
-        "id": "ORD004",
-        "customer_name": "Grace Nyong",
-        "customer_phone": "+254704567890",
-        "product": "iPhone 13",
-        "quantity": 1,
-        "amount": 75000,
-        "status": "confirmed",
-        "business_id": "mama_jane_electronics",
-        "created_at": "2024-01-17T09:20:00",
-        "delivery_address": "Kileleshwa, Nairobi"
-    },
-    {
-        "id": "ORD005",
-        "customer_name": "David Mwangi",
-        "customer_phone": "+254705678901",
-        "product": "Bluetooth Speaker",
-        "quantity": 3,
-        "amount": 7500,
-        "status": "pending",
-        "business_id": "mama_jane_electronics",
-        "created_at": "2024-01-17T11:10:00",
-        "delivery_address": "Eastleigh, Nairobi"
-    }
-]
+def find_product_by_name(product_name: str, business_id: str = None) -> Optional[Dict]:
+    """Find a product by name in JSON data"""
+    try:
+        return db.find_product_by_name(product_name, business_id)
+    except Exception as e:
+        print(f"❌ Error finding product '{product_name}': {e}")
+        return None
+
+def get_products_by_category(category: str, business_id: str = None) -> List[Dict]:
+    """Get products by category from JSON"""
+    try:
+        products = db.get_products()
+        
+        if business_id:
+            products = [p for p in products if p.get('business_id') == business_id]
+        
+        if category:
+            products = [p for p in products if category.lower() in p.get('category', '').lower()]
+        
+        return products
+    except Exception as e:
+        print(f"❌ Error getting products by category '{category}': {e}")
+        return []
+
+def get_low_stock_products(business_id: str, threshold: int = 5) -> List[Dict]:
+    """Get products with low stock from JSON"""
+    try:
+        products = get_products_for_business(business_id)
+        return [p for p in products if p.get('stock', 0) <= threshold and p.get('stock', 0) > 0]
+    except Exception as e:
+        print(f"❌ Error getting low stock products: {e}")
+        return []
+
+def get_out_of_stock_products(business_id: str) -> List[Dict]:
+    """Get products that are out of stock from JSON"""
+    try:
+        products = get_products_for_business(business_id)
+        return [p for p in products if p.get('stock', 0) == 0]
+    except Exception as e:
+        print(f"❌ Error getting out of stock products: {e}")
+        return []
 
 # =============================================================================
-# CUSTOMER DATA
-# =============================================================================
-
-SAMPLE_CUSTOMERS = [
-    {
-        "id": "CUST001",
-        "name": "John Kamau",
-        "phone": "+254701234567",
-        "email": "john.kamau@email.com",
-        "location": "Westlands, Nairobi",
-        "total_orders": 5,
-        "total_spent": 145000,
-        "last_order": "2024-01-15",
-        "preferred_categories": ["Electronics", "Accessories"]
-    },
-    {
-        "id": "CUST002", 
-        "name": "Mary Wanjiku",
-        "phone": "+254702345678",
-        "email": "mary.wanjiku@email.com",
-        "location": "Karen, Nairobi",
-        "total_orders": 3,
-        "total_spent": 89000,
-        "last_order": "2024-01-16",
-        "preferred_categories": ["Electronics"]
-    },
-    {
-        "id": "CUST003",
-        "name": "Peter Ochieng", 
-        "phone": "+254703456789",
-        "email": "peter.ochieng@email.com",
-        "location": "Kilimani, Nairobi",
-        "total_orders": 2,
-        "total_spent": 39500,
-        "last_order": "2024-01-16",
-        "preferred_categories": ["Accessories", "Storage"]
-    }
-]
-
-# =============================================================================
-# DEMO DATA TOOLS
+# DEMO DATA TOOLS (UPDATED TO USE JSON)
 # =============================================================================
 
 load_demo_data_def = {
     "name": "load_demo_data",
-    "description": "Initialize sample business and product data for demo",
+    "description": "Initialize and load demo data from JSON files",
     "parameters": {
         "type": "object",
         "properties": {
-            "include_sample_orders": {
+            "reload_from_files": {
                 "type": "boolean",
-                "description": "Include sample order history",
+                "description": "Force reload from JSON files",
                 "default": True
             }
         },
@@ -292,68 +282,80 @@ load_demo_data_def = {
     }
 }
 
-async def load_demo_data_handler(include_sample_orders: bool = True):
-    """Load demo business data"""
-    businesses_loaded = len(DEMO_BUSINESSES)
-    total_products = sum(len(biz["products"]) for biz in DEMO_BUSINESSES.values())
-    total_orders = len(SAMPLE_ORDERS) if include_sample_orders else 0
-    
-    # Calculate total inventory value
-    total_inventory_value = 0
-    for business in DEMO_BUSINESSES.values():
-        for product in business["products"]:
-            total_inventory_value += product["price"] * product["stock"]
-    
-    message = f"""🎯 **DEMO DATA LOADED SUCCESSFULLY**
+async def load_demo_data_handler(reload_from_files: bool = True):
+    """Load demo business data from JSON files"""
+    try:
+        if reload_from_files:
+            result = reload_demo_data()
+            if not result['success']:
+                return {
+                    "message": f"❌ Failed to load demo data: {result.get('error', 'Unknown error')}",
+                    "demo_ready": False
+                }
+        
+        # Get current stats
+        stats = db.get_stats()
+        businesses = DEMO_BUSINESSES
+        
+        # Calculate inventory value
+        total_inventory_value = 0
+        for business in businesses.values():
+            for product in business.get('products', []):
+                total_inventory_value += product.get('price', 0) * product.get('stock', 0)
+        
+        message = f"""🎯 **DYNAMIC JSON DATABASE LOADED**
 
-🏪 **BUSINESSES:** {businesses_loaded} active businesses
-• Mama Jane's Electronics (Nairobi)
-• Pete's Tech Paradise (Mombasa)
+🏪 **BUSINESSES:** {stats.get('businesses_count', 0)} active businesses
+• Data loaded from data/businesses.json
 
 📦 **INVENTORY:**
-• Total Products: {total_products} items
+• Total Products: {stats.get('products_count', 0)} items
 • Total Value: KSh {total_inventory_value:,.0f}
-• Categories: Electronics, Accessories, Storage
+• Data source: data/products.json
 
-📋 **SAMPLE ORDERS:** {total_orders} orders
-• Various order statuses (pending to delivered)
-• Realistic customer data
-• M-Pesa payment records
+📋 **ORDERS:** {stats.get('orders_count', 0)} orders
+• Order history from data/orders.json
+• Real-time order processing
 
-💰 **SALES DATA:**
-• Daily, weekly, monthly reports available
-• Revenue analytics and trends
-• Customer behavior insights
+💾 **DATABASE STATUS:**
+• All changes now persist to JSON files
+• CRUD operations are fully functional
+• Data survives application restarts
 
-🇰🇪 **KENYAN CONTEXT:**
-• Pricing in KSh (Kenyan Shillings)
-• Local business names and locations
-• Realistic product catalog for Kenyan market
+🔧 **DYNAMIC FEATURES:**
+• Add/Edit/Delete products - saves to JSON
+• Real inventory tracking
+• Persistent order history
+• Live stock updates
 
-**✅ Demo is ready!** Try vendor or customer commands to explore the full system."""
+**✅ Dynamic JSON database is ready!** All changes will be saved to JSON files."""
 
-    # Store demo status in session
-    cl.user_session.set("demo_data_loaded", True)
-    cl.user_session.set("demo_load_time", datetime.now().isoformat())
-    
-    return {
-        "message": message,
-        "businesses_count": businesses_loaded,
-        "products_count": total_products,
-        "orders_count": total_orders,
-        "inventory_value": total_inventory_value,
-        "demo_ready": True
-    }
+        return {
+            "message": message,
+            "businesses_count": stats.get('businesses_count', 0),
+            "products_count": stats.get('products_count', 0),
+            "orders_count": stats.get('orders_count', 0),
+            "inventory_value": total_inventory_value,
+            "demo_ready": True,
+            "database_type": "JSON Files"
+        }
+        
+    except Exception as e:
+        return {
+            "message": f"❌ Error loading demo data: {str(e)}",
+            "demo_ready": False,
+            "error": str(e)
+        }
 
 demo_explanation_def = {
     "name": "demo_explanation", 
-    "description": "Explain how the real WhatsApp version works",
+    "description": "Explain how the JSON database works",
     "parameters": {
         "type": "object",
         "properties": {
             "focus_area": {
                 "type": "string",
-                "enum": ["overview", "vendor_features", "customer_features", "technical", "business_value"],
+                "enum": ["overview", "json_benefits", "crud_operations", "persistence", "real_world"],
                 "description": "Specific area to focus explanation on",
                 "default": "overview"
             }
@@ -363,68 +365,88 @@ demo_explanation_def = {
 }
 
 async def demo_explanation_handler(focus_area: str = "overview"):
-    """Explain the real WhatsApp implementation"""
+    """Explain the JSON database implementation"""
     
     explanations = {
-        "overview": """🌟 **HOW SASABOT WORKS ON WHATSAPP**
+        "overview": """🗄️ **JSON DATABASE IMPLEMENTATION**
 
-**📱 Real Implementation:**
-• Business owners chat with Sasabot via WhatsApp Business
-• Customers text the business WhatsApp number
-• AI handles ALL conversations automatically 24/7
-• No apps to download - just use WhatsApp!
+**📁 File Structure:**
+• `data/businesses.json` - Business information
+• `data/products.json` - Product catalog with stock
+• `data/orders.json` - Order history and tracking
+• `data/customers.json` - Customer profiles
 
-**🏪 For Business Owners:**
-• Complete business management through chat
-• Voice messages supported (Swahili + English)
-• Real-time notifications and alerts
-• Works on any phone - smartphone or basic
+**🔄 How It Works:**
+• All data loads from JSON files on startup
+• Changes save immediately to JSON files
+• No data loss when app restarts
+• Easy to inspect and modify data manually
 
-**🛒 For Customers:**
-• Natural shopping conversations
-• M-Pesa payments integrated
-• Order tracking via WhatsApp
-• Customer support always available
+**💾 CRUD Operations:**
+• **Create**: Add products → saves to JSON
+• **Read**: Browse products → loads from JSON  
+• **Update**: Edit products → updates JSON
+• **Delete**: Remove products → deletes from JSON
 
-**🇰🇪 Built for Kenya:**
-• M-Pesa STK Push integration
-• Swahili language support
-• Local business workflows
-• Affordable pricing for SMEs
+**This is now a REAL database demo - changes persist!**""",
 
-**This demo shows the EXACT experience - imagine it happening in WhatsApp!**""",
+        "crud_operations": """⚙️ **CRUD OPERATIONS IN ACTION**
 
-        "business_value": """💼 **BUSINESS VALUE PROPOSITION**
+**✅ CREATE - Adding Products:**
+• Vendor says "Add iPhone for 75k"
+• New product object created
+• Saved to `data/products.json`
+• Auto-generates unique ID
+• Adds timestamps
 
-**💰 COST SAVINGS:**
-• 80% reduction in customer service costs
-• No need for separate e-commerce platform
-• Eliminate manual order processing
-• Reduce inventory management overhead
+**📖 READ - Browsing Products:**
+• Customer says "Show products"
+• Loads fresh data from JSON files
+• Displays current stock levels
+• Shows real-time inventory
 
-**📈 REVENUE GROWTH:**
-• 24/7 availability increases sales
-• Personalized recommendations boost AOV
-• Faster order processing
-• Reduced cart abandonment
+**✏️ UPDATE - Editing Products:**
+• Vendor says "Update iPhone price to 70k"
+• Finds product in JSON
+• Updates price field
+• Saves entire file back
+• Maintains data integrity
 
-**🎯 COMPETITIVE ADVANTAGE:**
-• First-mover advantage in AI business automation
-• Superior customer experience
-• Data-driven business insights
-• Scalable operations
+**🗑️ DELETE - Removing Products:**
+• Vendor says "Delete iPhone"
+• Removes from products array
+• Saves updated JSON file
+• Product permanently removed
 
-**🇰🇪 KENYAN MARKET FIT:**
-• 90%+ WhatsApp penetration in Kenya
-• M-Pesa ubiquity for payments
-• Language localization
-• SME-focused features and pricing
+**All operations persist between app sessions!**""",
 
-**📊 MEASURABLE RESULTS:**
-• Average 40% increase in sales
-• 60% reduction in response time
-• 95% customer satisfaction
-• 3x faster order processing"""
+        "persistence": """💾 **DATA PERSISTENCE BENEFITS**
+
+**🔄 Survives Restarts:**
+• Add a product, restart the app
+• Product is still there!
+• All changes saved to JSON files
+• No data loss ever
+
+**📊 Real Inventory Tracking:**
+• Customer buys 2 phones
+• Stock reduces from 10 to 8
+• Change saved to JSON immediately
+• Next customer sees updated stock
+
+**📈 Order History:**
+• Every order saves to JSON
+• Complete order tracking
+• Customer order history
+• Business analytics possible
+
+**🛠️ Easy Maintenance:**
+• Can edit JSON files directly
+• Backup by copying files
+• Reset demo by restoring files
+• Simple but powerful
+
+**Perfect for demonstrating real e-commerce functionality!**"""
     }
     
     message = explanations.get(focus_area, explanations["overview"])
@@ -432,8 +454,8 @@ async def demo_explanation_handler(focus_area: str = "overview"):
     return {
         "message": message,
         "focus_area": focus_area,
-        "is_demo": True,
-        "real_platform": "WhatsApp"
+        "database_type": "JSON Files",
+        "persistence": True
     }
 
 # =============================================================================
@@ -444,3 +466,34 @@ demo_tools = [
     (load_demo_data_def, load_demo_data_handler),
     (demo_explanation_def, demo_explanation_handler),
 ]
+
+# =============================================================================
+# INITIALIZATION
+# =============================================================================
+
+def initialize_demo_data():
+    """Initialize demo data on module import"""
+    try:
+        # Validate that JSON files exist
+        validation = db.validate_data_files()
+        missing_files = [f for f, exists in validation.items() if not exists]
+        
+        if missing_files:
+            print(f"⚠️ Missing JSON files: {missing_files}")
+            print("Please ensure all JSON files exist in the data/ directory")
+        else:
+            print("✅ All JSON database files found")
+            
+        # Load initial data
+        global DEMO_BUSINESSES, SAMPLE_ORDERS
+        DEMO_BUSINESSES = get_demo_businesses()
+        SAMPLE_ORDERS = load_orders_from_json()
+        
+        stats = db.get_stats()
+        print(f"✅ Demo data initialized from JSON: {stats}")
+        
+    except Exception as e:
+        print(f"❌ Error initializing demo data: {e}")
+
+# Initialize when module is imported
+initialize_demo_data()

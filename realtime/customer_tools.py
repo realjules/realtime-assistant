@@ -1,702 +1,651 @@
 """
-Customer Tools
-All customer shopping functionality including product browsing, orders, and support
+Customer Tools - Updated to use JSON Database
+These tools allow customers to browse products, search, and place orders
+All data now loads from and saves to JSON files
 """
 
-import chainlit as cl
 import json
-import random
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, Any, List
+from utils.simple_db import db
+from datetime import datetime
 
-# Import demo data
-from .demo_data import DEMO_BUSINESSES, SAMPLE_ORDERS
 
-# =============================================================================
-# CUSTOMER DASHBOARD
-# =============================================================================
-
-customer_menu_def = {
-    "name": "customer_menu",
-    "description": "Show customer shopping menu with available options",
-    "parameters": {
-        "type": "object",
-        "properties": {},
-        "required": []
-    }
-}
-
-async def customer_menu_handler():
-    """Show customer menu options"""
-    menu = """🛒 **WELCOME TO SASABOT MARKETPLACE**
-
-**🛍️ BROWSE & DISCOVER:**
-• "Show products" - View all available items
-• "Electronics" - Browse electronics category
-• "Under 30k" - Products below KSh 30,000
-• "Search [product name]" - Find specific items
-• "What's new?" - Latest arrivals
-• "Best deals" - Current promotions
-
-**💳 SHOPPING & ORDERS:**
-• "Buy [product name]" - Quick purchase
-• "Add to cart [product]" - Add to shopping cart
-• "View my cart" - See cart contents
-• "Place order" - Checkout process
-• "Track my order" - Order status
-
-**💰 PRICING & SUPPORT:**
-• "How much is [product]?" - Check prices
-• "Compare [product1] vs [product2]" - Price comparison
-• "Customer support" - Get help
-• "My order history" - Past purchases
-
-**🎯 QUICK ACTIONS:**
-• "Recommend something" - Personalized suggestions
-• "Popular products" - Trending items
-
-**What are you looking for today?**"""
-
-    return {"menu": menu, "options_count": 16}
-
-# =============================================================================
-# PRODUCT BROWSING
-# =============================================================================
-
-browse_products_def = {
-    "name": "browse_products",
-    "description": "Show products available for customers to purchase",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "category": {
-                "type": "string",
-                "description": "Product category filter",
-                "default": "all"
-            },
-            "max_price": {
-                "type": "number",
-                "description": "Maximum price filter"
-            },
-            "min_price": {
-                "type": "number",
-                "description": "Minimum price filter"
-            },
-            "sort_by": {
-                "type": "string",
-                "enum": ["price_low", "price_high", "name", "stock"],
-                "description": "Sort products by",
-                "default": "name"
-            }
-        },
-        "required": []
-    }
-}
-
-async def browse_products_handler(category: str = "all", max_price: float = None, min_price: float = None, sort_by: str = "name"):
-    """Show available products for customers"""
-    all_products = []
-    
-    # Collect products from all businesses
-    for business_id, business_data in DEMO_BUSINESSES.items():
-        for product in business_data["products"]:
-            if product["stock"] > 0:  # Only show in-stock items
-                product_copy = product.copy()
-                product_copy["business_name"] = business_data["name"]
-                product_copy["business_id"] = business_id
-                all_products.append(product_copy)
-    
-    # Apply filters
-    filtered_products = all_products
-    
-    if category != "all":
-        filtered_products = [p for p in filtered_products if category.lower() in p.get("category", "").lower()]
-    
-    if max_price:
-        filtered_products = [p for p in filtered_products if p["price"] <= max_price]
-    
-    if min_price:
-        filtered_products = [p for p in filtered_products if p["price"] >= min_price]
-    
-    # Sort products
-    if sort_by == "price_low":
-        filtered_products.sort(key=lambda x: x["price"])
-    elif sort_by == "price_high":
-        filtered_products.sort(key=lambda x: x["price"], reverse=True)
-    elif sort_by == "stock":
-        filtered_products.sort(key=lambda x: x["stock"], reverse=True)
-    else:  # name
-        filtered_products.sort(key=lambda x: x["name"])
-    
-    if not filtered_products:
-        filter_desc = []
-        if category != "all":
-            filter_desc.append(f"category '{category}'")
-        if max_price:
-            filter_desc.append(f"under KSh {max_price:,.0f}")
-        if min_price:
-            filter_desc.append(f"above KSh {min_price:,.0f}")
+def browse_products_handler(params: Dict[str, Any]) -> str:
+    """
+    Allow customers to browse available products from all businesses
+    Now loads fresh data from JSON files
+    """
+    try:
+        # Load fresh products from JSON database
+        all_products = db.get_products()
+        businesses = db.get_businesses()
         
-        filter_text = " and ".join(filter_desc) if filter_desc else "your criteria"
-        return {"message": f"😕 No products found matching {filter_text}. Try browsing all products!", "products": []}
-    
-    # Build product listing
-    header = "🛒 **AVAILABLE PRODUCTS**"
-    if category != "all":
-        header += f" - {category.title()} Category"
-    if max_price or min_price:
-        price_range = ""
-        if min_price and max_price:
-            price_range = f" (KSh {min_price:,.0f} - {max_price:,.0f})"
-        elif max_price:
-            price_range = f" (Under KSh {max_price:,.0f})"
-        elif min_price:
-            price_range = f" (Above KSh {min_price:,.0f})"
-        header += price_range
-    
-    product_list = [header + "\n"]
-    
-    for i, product in enumerate(filtered_products, 1):
-        # Stock availability indicator
-        if product["stock"] > 10:
-            availability = "✅ In Stock"
-        elif product["stock"] > 5:
-            availability = f"📦 {product['stock']} available"
+        if not all_products:
+            return "🛍️ No products available at the moment. Please check back later!"
+        
+        # Filter out products with zero stock or inactive status
+        available_products = [
+            p for p in all_products 
+            if p.get('stock', 0) > 0 and p.get('status', 'active') == 'active'
+        ]
+        
+        if not available_products:
+            return "🛍️ All products are currently out of stock. Please check back later!"
+        
+        # Group products by business for better organization
+        products_by_business = {}
+        for product in available_products:
+            business_id = product.get('business_id', 'unknown')
+            if business_id not in products_by_business:
+                products_by_business[business_id] = []
+            products_by_business[business_id].append(product)
+        
+        result = "🛍️ **BROWSE PRODUCTS** 🛍️\n\n"
+        
+        # Display products grouped by business
+        for business_id, products in products_by_business.items():
+            business = businesses.get(business_id, {})
+            business_name = business.get('name', 'Unknown Business')
+            business_location = business.get('location', 'Unknown Location')
+            
+            result += f"🏪 **{business_name}** ({business_location})\n"
+            result += f"📞 {business.get('phone', 'No phone')}\n"
+            result += "─" * 50 + "\n"
+            
+            # Sort products by category, then by price
+            products.sort(key=lambda x: (x.get('category', ''), x.get('price', 0)))
+            
+            current_category = None
+            for product in products:
+                category = product.get('category', 'Other')
+                
+                # Show category header if it changed
+                if category != current_category:
+                    result += f"\n📂 **{category}**\n"
+                    current_category = category
+                
+                # Format product info
+                name = product.get('name', 'Unknown Product')
+                price = product.get('price', 0)
+                stock = product.get('stock', 0)
+                brand = product.get('brand', '')
+                warranty = product.get('warranty', '')
+                
+                result += f"   🔹 **{name}**"
+                if brand:
+                    result += f" ({brand})"
+                result += f"\n      💰 KSh {price:,}"
+                result += f" | 📦 {stock} in stock"
+                if warranty:
+                    result += f" | 🛡️ {warranty} warranty"
+                result += f"\n      🆔 Product ID: {product.get('id', 'N/A')}\n"
+                
+                # Add description if available
+                description = product.get('description', '')
+                if description:
+                    # Truncate long descriptions
+                    if len(description) > 80:
+                        description = description[:77] + "..."
+                    result += f"      📝 {description}\n"
+                
+                result += "\n"
+            
+            result += "\n" + "="*60 + "\n\n"
+        
+        # Add helpful instructions
+        result += "💡 **How to Order:**\n"
+        result += "1. Note the Product ID of items you want\n"
+        result += "2. Use the 'Search Products' tool to find specific items\n"
+        result += "3. Use the 'Place Order' tool with product IDs and quantities\n\n"
+        
+        result += f"📊 **Summary:** {len(available_products)} products available from {len(products_by_business)} businesses\n"
+        result += f"🕒 Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        
+        return result
+        
+    except Exception as e:
+        return f"❌ Error browsing products: {str(e)}\nPlease try again or contact support."
+
+
+def search_products_handler(params: Dict[str, Any]) -> str:
+    """
+    Search for products by name, category, or price range
+    Now searches through current JSON data
+    """
+    try:
+        query = params.get('query', '').strip().lower()
+        max_price = params.get('max_price')
+        category = params.get('category', '').strip().lower()
+        business_id = params.get('business_id', '').strip()
+        
+        if not query and not max_price and not category and not business_id:
+            return "❌ Please provide at least one search criteria:\n- query: product name to search\n- max_price: maximum price\n- category: product category\n- business_id: specific business"
+        
+        # Load fresh products from JSON database
+        all_products = db.get_products()
+        businesses = db.get_businesses()
+        
+        if not all_products:
+            return "🔍 No products available to search."
+        
+        # Filter products based on search criteria
+        matching_products = []
+        
+        for product in all_products:
+            # Skip out of stock or inactive products
+            if product.get('stock', 0) <= 0 or product.get('status', 'active') != 'active':
+                continue
+            
+            matches = True
+            
+            # Search by name/description
+            if query:
+                product_name = product.get('name', '').lower()
+                product_desc = product.get('description', '').lower()
+                product_brand = product.get('brand', '').lower()
+                
+                if not (query in product_name or query in product_desc or query in product_brand):
+                    matches = False
+            
+            # Filter by max price
+            if max_price is not None:
+                try:
+                    if product.get('price', 0) > float(max_price):
+                        matches = False
+                except ValueError:
+                    pass
+            
+            # Filter by category
+            if category:
+                product_category = product.get('category', '').lower()
+                if category not in product_category:
+                    matches = False
+            
+            # Filter by business
+            if business_id:
+                if product.get('business_id', '') != business_id:
+                    matches = False
+            
+            if matches:
+                matching_products.append(product)
+        
+        if not matching_products:
+            return f"🔍 No products found matching your search criteria.\n\n💡 Try:\n- Different keywords\n- Higher price limit\n- Different category\n- Browse all products to see what's available"
+        
+        # Sort results by relevance (name match first, then price)
+        if query:
+            matching_products.sort(key=lambda x: (
+                0 if query in x.get('name', '').lower() else 1,
+                x.get('price', 0)
+            ))
         else:
-            availability = f"⚠️ Only {product['stock']} left!"
+            matching_products.sort(key=lambda x: x.get('price', 0))
         
-        product_list.append(
-            f"**{i}. {product['name']}**\n"
-            f"   💰 KSh {product['price']:,.0f}\n"
-            f"   🏪 {product['business_name']}\n"
-            f"   📦 {availability}\n"
-        )
+        result = "🔍 **SEARCH RESULTS** 🔍\n\n"
         
-        # Add description if available
-        if product.get("description"):
-            product_list.append(f"   📝 {product['description']}\n")
-    
-    footer = f"\n💬 **To order:** Say 'Buy [product name]' or 'How much is [product]?'\n🛒 **Add to cart:** Say 'Add [product] to cart'"
-    message = "\n".join(product_list) + footer
-    
-    return {
-        "message": message,
-        "products": filtered_products,
-        "total_found": len(filtered_products),
-        "filters_applied": {"category": category, "max_price": max_price, "min_price": min_price}
-    }
+        # Show search criteria
+        criteria = []
+        if query:
+            criteria.append(f"Query: '{query}'")
+        if max_price:
+            criteria.append(f"Max Price: KSh {max_price:,}")
+        if category:
+            criteria.append(f"Category: '{category}'")
+        if business_id:
+            business_name = businesses.get(business_id, {}).get('name', business_id)
+            criteria.append(f"Business: {business_name}")
+        
+        result += f"📋 Search criteria: {' | '.join(criteria)}\n"
+        result += f"📊 Found {len(matching_products)} products\n\n"
+        result += "─" * 60 + "\n\n"
+        
+        # Group by business for display
+        products_by_business = {}
+        for product in matching_products:
+            business_id = product.get('business_id', 'unknown')
+            if business_id not in products_by_business:
+                products_by_business[business_id] = []
+            products_by_business[business_id].append(product)
+        
+        # Display results
+        for business_id, products in products_by_business.items():
+            business = businesses.get(business_id, {})
+            business_name = business.get('name', 'Unknown Business')
+            
+            result += f"🏪 **{business_name}**\n"
+            result += f"📍 {business.get('location', 'Unknown Location')}\n"
+            result += f"📞 {business.get('phone', 'No phone')}\n\n"
+            
+            for product in products:
+                name = product.get('name', 'Unknown Product')
+                price = product.get('price', 0)
+                stock = product.get('stock', 0)
+                category = product.get('category', 'Other')
+                brand = product.get('brand', '')
+                
+                result += f"   🔹 **{name}**"
+                if brand:
+                    result += f" ({brand})"
+                result += f"\n      💰 KSh {price:,} | 📂 {category} | 📦 {stock} available"
+                result += f"\n      🆔 Product ID: {product.get('id', 'N/A')}\n"
+                
+                # Highlight matching terms in description
+                description = product.get('description', '')
+                if description and len(description) <= 100:
+                    result += f"      📝 {description}\n"
+                
+                result += "\n"
+            
+            result += "─" * 40 + "\n\n"
+        
+        result += "💡 To order any of these products, use the 'Place Order' tool with the Product ID."
+        
+        return result
+        
+    except Exception as e:
+        return f"❌ Error searching products: {str(e)}\nPlease try again with valid search criteria."
 
-search_products_def = {
-    "name": "search_products",
-    "description": "Search for specific products by name or description",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "search_term": {
-                "type": "string",
-                "description": "Product name or description to search for"
-            }
-        },
-        "required": ["search_term"]
-    }
-}
 
-async def search_products_handler(search_term: str):
-    """Search for products"""
-    all_products = []
-    
-    # Collect all products
-    for business_id, business_data in DEMO_BUSINESSES.items():
-        for product in business_data["products"]:
-            if product["stock"] > 0:
-                product_copy = product.copy()
-                product_copy["business_name"] = business_data["name"]
-                all_products.append(product_copy)
-    
-    # Search in name and description
-    search_lower = search_term.lower()
-    matching_products = []
-    
-    for product in all_products:
-        if (search_lower in product["name"].lower() or 
-            search_lower in product.get("description", "").lower() or
-            search_lower in product.get("category", "").lower()):
-            matching_products.append(product)
-    
-    if not matching_products:
-        return {
-            "message": f"🔍 No products found for '{search_term}'\n\n💡 **Try searching for:**\n• Phone, Laptop, Headphones\n• Electronics, Accessories\n• Or browse all products",
-            "products": []
+def place_order_handler(params: Dict[str, Any]) -> str:
+    """
+    Place an order for products
+    Now saves orders to JSON and updates product stock
+    """
+    try:
+        # Required parameters
+        customer_name = params.get('customer_name', '').strip()
+        customer_phone = params.get('customer_phone', '').strip()
+        customer_email = params.get('customer_email', '').strip()
+        delivery_address = params.get('delivery_address', '').strip()
+        
+        # Order items - expect list of {product_id, quantity}
+        order_items = params.get('items', [])
+        
+        # Optional parameters
+        payment_method = params.get('payment_method', 'mpesa').lower()
+        delivery_instructions = params.get('delivery_instructions', '').strip()
+        
+        # Validation
+        if not all([customer_name, customer_phone, delivery_address]):
+            return "❌ Missing required information:\n- customer_name\n- customer_phone\n- delivery_address"
+        
+        if not order_items or not isinstance(order_items, list):
+            return "❌ No items specified. Please provide 'items' as a list of {product_id, quantity}"
+        
+        # Validate phone number format
+        if not customer_phone.startswith('+254') and not customer_phone.startswith('07') and not customer_phone.startswith('01'):
+            return "❌ Invalid phone number format. Use +254 format or 07/01 format."
+        
+        # Normalize phone number
+        if customer_phone.startswith('07') or customer_phone.startswith('01'):
+            customer_phone = '+254' + customer_phone[1:]
+        
+        # Load current products and businesses
+        products = db.get_products()
+        businesses = db.get_businesses()
+        
+        # Process order items
+        order_details = []
+        total_amount = 0
+        business_id = None
+        errors = []
+        
+        for item in order_items:
+            if not isinstance(item, dict):
+                errors.append("Each item must be a dictionary with product_id and quantity")
+                continue
+                
+            product_id = str(item.get('product_id', ''))
+            try:
+                quantity = int(item.get('quantity', 0))
+            except (ValueError, TypeError):
+                errors.append(f"Invalid quantity for product {product_id}")
+                continue
+            
+            if quantity <= 0:
+                errors.append(f"Quantity must be positive for product {product_id}")
+                continue
+            
+            # Find the product
+            product = db.get_product_by_id(product_id)
+            if not product:
+                errors.append(f"Product {product_id} not found")
+                continue
+            
+            # Check if product is active
+            if product.get('status', 'active') != 'active':
+                errors.append(f"Product {product.get('name', product_id)} is not available")
+                continue
+            
+            # Check stock
+            available_stock = product.get('stock', 0)
+            if quantity > available_stock:
+                errors.append(f"Not enough stock for {product.get('name', product_id)}. Available: {available_stock}, Requested: {quantity}")
+                continue
+            
+            # Check business consistency (all products must be from same business)
+            product_business = product.get('business_id')
+            if business_id is None:
+                business_id = product_business
+            elif business_id != product_business:
+                errors.append("All products must be from the same business in one order")
+                continue
+            
+            # Calculate item total
+            unit_price = product.get('price', 0)
+            item_total = unit_price * quantity
+            
+            order_details.append({
+                'product_id': product_id,
+                'product_name': product.get('name', 'Unknown'),
+                'quantity': quantity,
+                'unit_price': unit_price,
+                'total_price': item_total
+            })
+            
+            total_amount += item_total
+        
+        # Return errors if any
+        if errors:
+            return "❌ Order cannot be processed due to the following errors:\n" + "\n".join(f"• {error}" for error in errors)
+        
+        if not order_details:
+            return "❌ No valid items in the order."
+        
+        # Get business info
+        business = businesses.get(business_id, {})
+        business_name = business.get('name', 'Unknown Business')
+        
+        # Calculate delivery fee (simple logic)
+        delivery_fee = 200  # Standard delivery fee
+        grand_total = total_amount + delivery_fee
+        
+        # Create order object
+        new_order = {
+            'customer_name': customer_name,
+            'customer_phone': customer_phone,
+            'customer_email': customer_email,
+            'business_id': business_id,
+            'items': order_details,
+            'total_amount': total_amount,
+            'delivery_fee': delivery_fee,
+            'grand_total': grand_total,
+            'status': 'pending',
+            'payment_method': payment_method,
+            'payment_status': 'pending',
+            'delivery_address': delivery_address,
+            'delivery_instructions': delivery_instructions
         }
-    
-    product_list = [f"🔍 **Search Results for '{search_term}'** ({len(matching_products)} found)\n"]
-    
-    for i, product in enumerate(matching_products, 1):
-        availability = "✅ Available" if product["stock"] > 5 else f"⚠️ Only {product['stock']} left"
         
-        product_list.append(
-            f"**{i}. {product['name']}**\n"
-            f"   💰 KSh {product['price']:,.0f}\n"
-            f"   🏪 {product['business_name']}\n"
-            f"   📦 {availability}\n"
-        )
-    
-    footer = "\n💬 Say 'Buy [product name]' to purchase or 'Details [product]' for more info"
-    message = "\n".join(product_list) + footer
-    
-    return {
-        "message": message,
-        "products": matching_products,
-        "search_term": search_term,
-        "results_count": len(matching_products)
-    }
+        # Save order to database
+        order_saved = db.add_order(new_order)
+        if not order_saved:
+            return "❌ Failed to save order. Please try again."
+        
+        # Update product stock
+        stock_updates_failed = []
+        for item in order_details:
+            product_id = item['product_id']
+            quantity = item['quantity']
+            
+            # Get current product
+            product = db.get_product_by_id(product_id)
+            new_stock = product.get('stock', 0) - quantity
+            
+            # Update stock
+            success = db.update_product(product_id, {'stock': new_stock})
+            if not success:
+                stock_updates_failed.append(product.get('name', product_id))
+        
+        # Get the order ID that was generated
+        orders = db.get_orders()
+        latest_order = max(orders, key=lambda x: x.get('created_at', ''))
+        order_id = latest_order.get('id', 'Unknown')
+        
+        # Prepare response
+        result = "✅ **ORDER PLACED SUCCESSFULLY!** ✅\n\n"
+        result += f"🆔 **Order ID:** {order_id}\n"
+        result += f"🏪 **Business:** {business_name}\n"
+        result += f"👤 **Customer:** {customer_name}\n"
+        result += f"📞 **Phone:** {customer_phone}\n"
+        if customer_email:
+            result += f"📧 **Email:** {customer_email}\n"
+        result += f"📍 **Delivery Address:** {delivery_address}\n"
+        if delivery_instructions:
+            result += f"📝 **Delivery Instructions:** {delivery_instructions}\n"
+        
+        result += "\n📦 **ORDER ITEMS:**\n"
+        for item in order_details:
+            result += f"   • {item['product_name']} x{item['quantity']} @ KSh {item['unit_price']:,} = KSh {item['total_price']:,}\n"
+        
+        result += f"\n💰 **PAYMENT SUMMARY:**\n"
+        result += f"   Subtotal: KSh {total_amount:,}\n"
+        result += f"   Delivery: KSh {delivery_fee:,}\n"
+        result += f"   **TOTAL: KSh {grand_total:,}**\n"
+        
+        result += f"\n💳 **Payment Method:** {payment_method.upper()}\n"
+        result += f"📋 **Order Status:** PENDING\n"
+        result += f"💲 **Payment Status:** PENDING\n"
+        
+        result += f"\n📞 **Next Steps:**\n"
+        result += f"1. The business will contact you to confirm the order\n"
+        result += f"2. Payment will be processed via {payment_method.upper()}\n"
+        result += f"3. Your order will be prepared and delivered\n"
+        result += f"4. You can track your order using Order ID: {order_id}\n"
+        
+        # Show business contact info
+        if business.get('phone'):
+            result += f"\n🏪 **Business Contact:** {business.get('phone')}\n"
+        
+        # Warn about stock update failures
+        if stock_updates_failed:
+            result += f"\n⚠️ **Warning:** Stock update failed for: {', '.join(stock_updates_failed)}\n"
+        
+        result += f"\n🕒 **Order placed:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        
+        return result
+        
+    except Exception as e:
+        return f"❌ Error placing order: {str(e)}\nPlease check your order details and try again."
 
-product_details_def = {
-    "name": "product_details",
-    "description": "Get detailed information about a specific product",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "product_name": {
-                "type": "string",
-                "description": "Name of product to get details for"
-            }
-        },
-        "required": ["product_name"]
-    }
-}
 
-async def product_details_handler(product_name: str):
-    """Get detailed product information"""
-    # Search for product across all businesses
-    for business_id, business_data in DEMO_BUSINESSES.items():
-        for product in business_data["products"]:
-            if product_name.lower() in product["name"].lower():
-                # Stock status with detailed info
-                if product["stock"] == 0:
-                    stock_status = "❌ Out of Stock"
-                    stock_detail = "This item is currently unavailable"
-                elif product["stock"] < 3:
-                    stock_status = f"⚠️ Limited Stock"
-                    stock_detail = f"Only {product['stock']} units remaining - order soon!"
-                elif product["stock"] < 10:
-                    stock_status = f"📦 {product['stock']} Available"
-                    stock_detail = f"{product['stock']} units in stock"
-                else:
-                    stock_status = "✅ In Stock"
-                    stock_detail = "Plenty available"
-                
-                # Calculate potential savings or value
-                similar_price_range = f"KSh {product['price'] * 0.9:,.0f} - {product['price'] * 1.1:,.0f}"
-                
-                message = f"""📱 **{product['name']} - Product Details**
+def get_order_status_handler(params: Dict[str, Any]) -> str:
+    """
+    Check the status of an existing order
+    Loads order info from JSON database
+    """
+    try:
+        order_id = params.get('order_id', '').strip()
+        customer_phone = params.get('customer_phone', '').strip()
+        
+        if not order_id:
+            return "❌ Please provide the order_id to check status."
+        
+        # Load order from database
+        order = db.get_order_by_id(order_id)
+        if not order:
+            return f"❌ Order {order_id} not found. Please check the order ID and try again."
+        
+        # Verify customer phone if provided (for security)
+        if customer_phone and order.get('customer_phone') != customer_phone:
+            return "❌ Phone number doesn't match the order. Access denied."
+        
+        # Load business info
+        businesses = db.get_businesses()
+        business = businesses.get(order.get('business_id'), {})
+        
+        # Format order status
+        result = f"📋 **ORDER STATUS: {order_id}** 📋\n\n"
+        
+        # Customer info
+        result += f"👤 **Customer:** {order.get('customer_name', 'Unknown')}\n"
+        result += f"📞 **Phone:** {order.get('customer_phone', 'Unknown')}\n"
+        if order.get('customer_email'):
+            result += f"📧 **Email:** {order.get('customer_email')}\n"
+        
+        # Business info
+        result += f"🏪 **Business:** {business.get('name', 'Unknown Business')}\n"
+        if business.get('phone'):
+            result += f"📞 **Business Phone:** {business.get('phone')}\n"
+        
+        # Order details
+        result += f"\n📦 **ORDER ITEMS:**\n"
+        for item in order.get('items', []):
+            result += f"   • {item.get('product_name', 'Unknown')} x{item.get('quantity', 0)} @ KSh {item.get('unit_price', 0):,}\n"
+        
+        # Financial summary
+        result += f"\n💰 **FINANCIAL SUMMARY:**\n"
+        result += f"   Subtotal: KSh {order.get('total_amount', 0):,}\n"
+        result += f"   Delivery: KSh {order.get('delivery_fee', 0):,}\n"
+        result += f"   **TOTAL: KSh {order.get('grand_total', 0):,}**\n"
+        
+        # Status info
+        status = order.get('status', 'unknown').upper()
+        payment_status = order.get('payment_status', 'unknown').upper()
+        
+        result += f"\n📋 **Current Status:** {status}\n"
+        result += f"💳 **Payment Status:** {payment_status}\n"
+        result += f"💳 **Payment Method:** {order.get('payment_method', 'unknown').upper()}\n"
+        
+        # Delivery info
+        result += f"\n📍 **Delivery Address:** {order.get('delivery_address', 'Unknown')}\n"
+        if order.get('delivery_instructions'):
+            result += f"📝 **Delivery Instructions:** {order.get('delivery_instructions')}\n"
+        
+        # Timeline
+        result += f"\n⏰ **ORDER TIMELINE:**\n"
+        if order.get('created_at'):
+            result += f"   📅 Placed: {order.get('created_at')}\n"
+        if order.get('confirmed_at'):
+            result += f"   ✅ Confirmed: {order.get('confirmed_at')}\n"
+        if order.get('shipped_at'):
+            result += f"   🚚 Shipped: {order.get('shipped_at')}\n"
+        if order.get('delivered_at'):
+            result += f"   📦 Delivered: {order.get('delivered_at')}\n"
+        
+        # Status-specific messages
+        if status == 'PENDING':
+            result += f"\n💡 **Next:** Waiting for business confirmation. They will contact you soon.\n"
+        elif status == 'CONFIRMED':
+            result += f"\n💡 **Next:** Order is being prepared for shipment.\n"
+        elif status == 'SHIPPED':
+            result += f"\n💡 **Next:** Your order is on the way!\n"
+        elif status == 'DELIVERED':
+            result += f"\n🎉 **Your order has been delivered!** Thank you for your business.\n"
+        
+        return result
+        
+    except Exception as e:
+        return f"❌ Error checking order status: {str(e)}\nPlease try again with a valid order ID."
 
-💰 **Price:** KSh {product['price']:,.0f}
-🏷️ **Category:** {product.get('category', 'General')}
-📦 **Availability:** {stock_status}
-🔍 **Stock Info:** {stock_detail}
-🏪 **Seller:** {business_data['name']}
-
-📝 **Description:**
-{product.get('description', 'Quality product with reliable performance')}
-
-💡 **Price Range:** Similar products cost {similar_price_range}
-
-{"🛒 **Ready to order?** Say 'Buy " + product['name'] + "' or 'Add " + product['name'] + " to cart'" if product['stock'] > 0 else "😔 This item is currently out of stock. Try browsing similar products."}
-
-❓ **Need help?** Ask about delivery, warranty, or payment options!"""
-
-                return {
-                    "message": message,
-                    "product": product,
-                    "business": business_data['name'],
-                    "available": product['stock'] > 0,
-                    "stock_level": product['stock']
-                }
-    
-    return {
-        "message": f"❌ Sorry, I couldn't find '{product_name}'. \n\n🔍 **Try:**\n• Check spelling\n• Search for similar products\n• Browse our catalog",
-        "product": None,
-        "available": False
-    }
 
 # =============================================================================
-# SHOPPING CART
-# =============================================================================
-
-add_to_cart_def = {
-    "name": "add_to_cart",
-    "description": "Add product to customer's shopping cart",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "product_name": {
-                "type": "string",
-                "description": "Name of product to add to cart"
-            },
-            "quantity": {
-                "type": "integer",
-                "description": "Quantity to add",
-                "default": 1
-            }
-        },
-        "required": ["product_name"]
-    }
-}
-
-async def add_to_cart_handler(product_name: str, quantity: int = 1):
-    """Add product to cart"""
-    # Find the product
-    found_product = None
-    business_name = None
-    
-    for business_id, business_data in DEMO_BUSINESSES.items():
-        for product in business_data["products"]:
-            if product_name.lower() in product["name"].lower():
-                found_product = product
-                business_name = business_data["name"]
-                break
-        if found_product:
-            break
-    
-    if not found_product:
-        return {
-            "success": False,
-            "message": f"❌ Product '{product_name}' not found. Try browsing our catalog first."
-        }
-    
-    if found_product["stock"] < quantity:
-        return {
-            "success": False,
-            "message": f"❌ Sorry, only {found_product['stock']} units of {found_product['name']} available."
-        }
-    
-    # Get or create cart
-    cart = cl.user_session.get("cart_items", [])
-    
-    # Check if product already in cart
-    for item in cart:
-        if item["product_id"] == found_product["id"]:
-            new_quantity = item["quantity"] + quantity
-            if new_quantity > found_product["stock"]:
-                return {
-                    "success": False,
-                    "message": f"❌ Cannot add {quantity} more. You already have {item['quantity']} in cart. Stock: {found_product['stock']}"
-                }
-            item["quantity"] = new_quantity
-            break
-    else:
-        # Add new item to cart
-        cart_item = {
-            "product_id": found_product["id"],
-            "product_name": found_product["name"],
-            "price": found_product["price"],
-            "quantity": quantity,
-            "business_name": business_name
-        }
-        cart.append(cart_item)
-    
-    cl.user_session.set("cart_items", cart)
-    
-    total_items = sum(item["quantity"] for item in cart)
-    cart_total = sum(item["price"] * item["quantity"] for item in cart)
-    
-    return {
-        "success": True,
-        "message": f"🛒 **Added to Cart!**\n\n✅ {found_product['name']} x{quantity}\n💰 KSh {found_product['price']:,.0f} each\n\n📦 **Cart Summary:**\n• {total_items} items total\n💳 Total: KSh {cart_total:,.0f}\n\n💬 Say 'View cart' to see all items or 'Checkout' to place order!",
-        "cart_total": cart_total,
-        "total_items": total_items
-    }
-
-view_cart_def = {
-    "name": "view_cart",
-    "description": "Show customer's shopping cart contents",
-    "parameters": {
-        "type": "object",
-        "properties": {},
-        "required": []
-    }
-}
-
-async def view_cart_handler():
-    """View shopping cart"""
-    cart = cl.user_session.get("cart_items", [])
-    
-    if not cart:
-        return {
-            "message": "🛒 **Your cart is empty**\n\n🛍️ Start shopping by saying:\n• 'Show products'\n• 'Search [product name]'\n• 'Browse electronics'",
-            "cart_empty": True
-        }
-    
-    cart_list = ["🛒 **YOUR SHOPPING CART**\n"]
-    total_amount = 0
-    total_items = 0
-    
-    for i, item in enumerate(cart, 1):
-        item_total = item["price"] * item["quantity"]
-        total_amount += item_total
-        total_items += item["quantity"]
-        
-        cart_list.append(
-            f"**{i}. {item['product_name']}**\n"
-            f"   💰 KSh {item['price']:,.0f} x {item['quantity']} = KSh {item_total:,.0f}\n"
-            f"   🏪 {item['business_name']}\n"
-        )
-    
-    summary = f"""💳 **CART SUMMARY:**
-• Total Items: {total_items}
-• Total Amount: KSh {total_amount:,.0f}
-
-🎯 **Next Steps:**
-• "Checkout" - Place your order
-• "Remove [product]" - Remove item
-• "Clear cart" - Empty cart
-• "Continue shopping" - Browse more products"""
-    
-    message = "\n".join(cart_list) + "\n" + summary
-    
-    return {
-        "message": message,
-        "cart_items": cart,
-        "total_amount": total_amount,
-        "total_items": total_items,
-        "cart_empty": False
-    }
-
-# =============================================================================
-# ORDER PROCESSING
-# =============================================================================
-
-place_order_def = {
-    "name": "place_order",
-    "description": "Create an order for customer (from cart or direct purchase)",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "product_name": {
-                "type": "string",
-                "description": "Single product to order (if not using cart)"
-            },
-            "quantity": {
-                "type": "integer",
-                "description": "Quantity for single product order",
-                "default": 1
-            },
-            "use_cart": {
-                "type": "boolean",
-                "description": "Use items from cart for order",
-                "default": True
-            }
-        },
-        "required": []
-    }
-}
-
-async def place_order_handler(product_name: str = None, quantity: int = 1, use_cart: bool = True):
-    """Create customer order"""
-    order_items = []
-    
-    if use_cart and not product_name:
-        # Use cart items
-        cart = cl.user_session.get("cart_items", [])
-        if not cart:
-            return {
-                "success": False,
-                "message": "🛒 Your cart is empty! Add products first or specify a product to buy directly."
-            }
-        order_items = cart.copy()
-    
-    elif product_name:
-        # Direct product order
-        found_product = None
-        business_name = None
-        
-        for business_id, business_data in DEMO_BUSINESSES.items():
-            for product in business_data["products"]:
-                if product_name.lower() in product["name"].lower():
-                    found_product = product
-                    business_name = business_data["name"]
-                    break
-            if found_product:
-                break
-        
-        if not found_product:
-            return {
-                "success": False,
-                "message": f"❌ Product '{product_name}' not found."
-            }
-        
-        if found_product["stock"] < quantity:
-            return {
-                "success": False,
-                "message": f"❌ Sorry, only {found_product['stock']} units available."
-            }
-        
-        order_items = [{
-            "product_id": found_product["id"],
-            "product_name": found_product["name"],
-            "price": found_product["price"],
-            "quantity": quantity,
-            "business_name": business_name
-        }]
-    
-    else:
-        return {
-            "success": False,
-            "message": "❌ Please specify a product or add items to cart first."
-        }
-    
-    # Calculate order total
-    total_amount = sum(item["price"] * item["quantity"] for item in order_items)
-    order_id = f"ORD{random.randint(1000, 9999)}"
-    
-    # Create order summary
-    order_summary = [f"🛒 **ORDER CREATED - {order_id}**\n"]
-    
-    for item in order_items:
-        item_total = item["price"] * item["quantity"]
-        order_summary.append(
-            f"📱 {item['product_name']}\n"
-            f"   🔢 Quantity: {item['quantity']}\n"
-            f"   💰 KSh {item['price']:,.0f} x {item['quantity']} = KSh {item_total:,.0f}\n"
-        )
-    
-    order_summary.append(f"💳 **Total Amount: KSh {total_amount:,.0f}**")
-    
-    # Payment and delivery info
-    payment_info = f"""
-📋 **ORDER DETAILS:**
-• Order ID: {order_id}
-• Items: {len(order_items)} products
-• Total: KSh {total_amount:,.0f}
-
-📱 **PAYMENT OPTIONS:**
-• M-Pesa: Pay via mobile money
-• Cash on Delivery: Pay when you receive
-
-🚚 **DELIVERY:**
-• Same day delivery in Nairobi
-• 1-2 days other areas
-• Delivery fee: KSh 200
-
-**To confirm order, say: "CONFIRM ORDER {order_id}"**
-**To pay now: "PAY WITH MPESA"**"""
-    
-    message = "\n".join(order_summary) + payment_info
-    
-    # Store order in session
-    cl.user_session.set("pending_order", {
-        "order_id": order_id,
-        "items": order_items,
-        "total": total_amount,
-        "status": "pending_confirmation",
-        "created_at": datetime.now().isoformat()
-    })
-    
-    return {
-        "success": True,
-        "message": message,
-        "order_id": order_id,
-        "total": total_amount,
-        "items_count": len(order_items)
-    }
-
-track_order_def = {
-    "name": "track_order",
-    "description": "Track customer order status",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "order_id": {
-                "type": "string",
-                "description": "Order ID to track (optional, will use latest if not provided)"
-            }
-        },
-        "required": []
-    }
-}
-
-async def track_order_handler(order_id: str = None):
-    """Track order status"""
-    if order_id:
-        # Look for specific order in sample orders
-        for order in SAMPLE_ORDERS:
-            if order_id.upper() in order["id"]:
-                status_emoji = {
-                    "pending": "⏳",
-                    "confirmed": "✅",
-                    "processing": "📦",
-                    "shipped": "🚚",
-                    "delivered": "✅",
-                    "cancelled": "❌"
-                }
-                
-                message = f"""📋 **ORDER TRACKING - {order['id']}**
-
-📱 **Product:** {order['product']}
-👤 **Customer:** {order['customer']}
-💰 **Amount:** KSh {order['amount']:,.0f}
-📊 **Status:** {status_emoji.get(order['status'], '📋')} {order['status'].title()}
-
-🚚 **Delivery Updates:**"""
-                
-                if order['status'] == 'delivered':
-                    message += "\n✅ Order delivered successfully!"
-                elif order['status'] == 'shipped':
-                    message += "\n🚚 Your order is on the way! Expected delivery: Today"
-                elif order['status'] == 'processing':
-                    message += "\n📦 Order is being prepared for shipment"
-                elif order['status'] == 'confirmed':
-                    message += "\n✅ Order confirmed. Processing will begin shortly"
-                else:
-                    message += "\n⏳ Order received, awaiting confirmation"
-                
-                message += "\n\n📞 **Need help?** Contact customer support"
-                
-                return {
-                    "message": message,
-                    "order": order,
-                    "found": True
-                }
-    
-    # Check for pending order in session
-    pending_order = cl.user_session.get("pending_order")
-    if pending_order:
-        message = f"""📋 **YOUR LATEST ORDER - {pending_order['order_id']}**
-
-📦 **Items:** {len(pending_order['items'])} products
-💰 **Total:** KSh {pending_order['total']:,.0f}
-📊 **Status:** ⏳ {pending_order['status'].replace('_', ' ').title()}
-
-🎯 **Next Steps:**
-• Confirm your order
-• Choose payment method
-• Provide delivery address
-
-Say "CONFIRM ORDER" to proceed!"""
-        
-        return {
-            "message": message,
-            "order": pending_order,
-            "found": True
-        }
-    
-    return {
-        "message": "❌ No orders found.\n\n🛒 **Start shopping:**\n• Browse products\n• Add items to cart\n• Place your first order",
-        "found": False
-    }
-
-# =============================================================================
-# CUSTOMER TOOLS REGISTRY
+# TOOL DEFINITIONS FOR REGISTRY
 # =============================================================================
 
 customer_tools = [
-    (customer_menu_def, customer_menu_handler),
-    (browse_products_def, browse_products_handler),
-    (search_products_def, search_products_handler),
-    (product_details_def, product_details_handler),
-    (add_to_cart_def, add_to_cart_handler),
-    (view_cart_def, view_cart_handler),
-    (place_order_def, place_order_handler),
-    (track_order_def, track_order_handler),
+    {
+        "name": "browse_products",
+        "description": "Browse all available products from all businesses. Shows current inventory and prices from JSON database.",
+        "handler": browse_products_handler,
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    {
+        "name": "search_products", 
+        "description": "Search for products by name, category, price range, or business. Searches current JSON data.",
+        "handler": search_products_handler,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search term for product name, description, or brand"
+                },
+                "max_price": {
+                    "type": "number",
+                    "description": "Maximum price filter"
+                },
+                "category": {
+                    "type": "string", 
+                    "description": "Product category filter"
+                },
+                "business_id": {
+                    "type": "string",
+                    "description": "Filter by specific business ID"
+                }
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "place_order",
+        "description": "Place an order for products. Saves order to JSON database and updates product stock.",
+        "handler": place_order_handler,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "customer_name": {
+                    "type": "string",
+                    "description": "Customer's full name"
+                },
+                "customer_phone": {
+                    "type": "string", 
+                    "description": "Customer's phone number (preferably +254 format)"
+                },
+                "customer_email": {
+                    "type": "string",
+                    "description": "Customer's email address (optional)"
+                },
+                "delivery_address": {
+                    "type": "string",
+                    "description": "Full delivery address"
+                },
+                "items": {
+                    "type": "array",
+                    "description": "List of items to order",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "product_id": {"type": "string"},
+                            "quantity": {"type": "integer"}
+                        },
+                        "required": ["product_id", "quantity"]
+                    }
+                },
+                "payment_method": {
+                    "type": "string",
+                    "description": "Payment method: mpesa, cash, or bank",
+                    "default": "mpesa"
+                },
+                "delivery_instructions": {
+                    "type": "string",
+                    "description": "Special delivery instructions (optional)"
+                }
+            },
+            "required": ["customer_name", "customer_phone", "delivery_address", "items"]
+        }
+    },
+    {
+        "name": "get_order_status",
+        "description": "Check the status of an existing order using order ID. Loads from JSON database.",
+        "handler": get_order_status_handler,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "order_id": {
+                    "type": "string",
+                    "description": "The order ID to check (e.g., ORD001)"
+                },
+                "customer_phone": {
+                    "type": "string",
+                    "description": "Customer phone number for verification (optional)"
+                }
+            },
+            "required": ["order_id"]
+        }
+    }
 ]
