@@ -1,0 +1,5 @@
+1. It should be able to read the JSON/Database for the identity of the store. 
+2. Update the database. 
+3. Make it more dynamic.
+4. CRUD operations.
+

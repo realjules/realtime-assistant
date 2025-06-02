@@ -6,640 +6,505 @@ from openai import AsyncOpenAI
 import chainlit as cl
 from chainlit.logger import logger
 
-client = AsyncOpenAI()
+# Initialize OpenAI client
+client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # =============================================================================
-# SASABOT DEMO DATA
+# DYNAMIC DATA STORAGE
 # =============================================================================
 
-DEMO_PRODUCTS = [
-    {"id": "1", "name": "Samsung Galaxy A54", "price": 35000, "stock": 8, "category": "Electronics"},
-    {"id": "2", "name": "Dell Inspiron Laptop", "price": 55000, "stock": 3, "category": "Electronics"},
-    {"id": "3", "name": "Sony Wireless Headphones", "price": 4500, "stock": 15, "category": "Accessories"},
-    {"id": "4", "name": "iPhone 13", "price": 75000, "stock": 2, "category": "Electronics"},
-    {"id": "5", "name": "MacBook Air M1", "price": 120000, "stock": 1, "category": "Electronics"},
-    {"id": "6", "name": "Bluetooth Speaker", "price": 2500, "stock": 20, "category": "Accessories"},
-    {"id": "7", "name": "Phone Charger Cable", "price": 500, "stock": 50, "category": "Accessories"},
-    {"id": "8", "name": "Tablet 10-inch", "price": 18000, "stock": 6, "category": "Electronics"},
-]
+class DynamicDataStore:
+    """Dynamic data storage that can be modified during runtime"""
+    
+    def __init__(self):
+        self.businesses = {}
+        self.products = {}
+        self.orders = {}
+        self.customers = {}
+        self.initialize_demo_data()
+    
+    def initialize_demo_data(self):
+        """Initialize with some demo data"""
+        self.businesses = {
+            "mama_jane_electronics": {
+                "name": "Mama Jane's Electronics",
+                "owner": "Jane Wanjiku",
+                "location": "Nairobi, Kenya",
+                "created_at": datetime.now().isoformat()
+            }
+        }
+        
+        self.products = {
+            "1": {"id": "1", "name": "Samsung Galaxy A54", "price": 35000, "stock": 8, "category": "Electronics", "business_id": "mama_jane_electronics"},
+            "2": {"id": "2", "name": "Dell Inspiron Laptop", "price": 55000, "stock": 3, "category": "Electronics", "business_id": "mama_jane_electronics"},
+            "3": {"id": "3", "name": "Sony Wireless Headphones", "price": 4500, "stock": 15, "category": "Accessories", "business_id": "mama_jane_electronics"},
+        }
+    
+    def add_product(self, business_id: str, name: str, price: float, stock: int = 1, category: str = "General"):
+        """Dynamically add a new product"""
+        product_id = str(len(self.products) + 1)
+        self.products[product_id] = {
+            "id": product_id,
+            "name": name,
+            "price": price,
+            "stock": stock,
+            "category": category,
+            "business_id": business_id,
+            "created_at": datetime.now().isoformat()
+        }
+        return product_id
+    
+    def update_product(self, product_id: str, **updates):
+        """Update product details"""
+        if product_id in self.products:
+            self.products[product_id].update(updates)
+            return True
+        return False
+    
+    def get_products(self, business_id: str = None, category: str = None, max_price: float = None):
+        """Get products with dynamic filtering"""
+        products = list(self.products.values())
+        
+        if business_id:
+            products = [p for p in products if p.get("business_id") == business_id]
+        
+        if category:
+            products = [p for p in products if category.lower() in p.get("category", "").lower()]
+        
+        if max_price:
+            products = [p for p in products if p.get("price", 0) <= max_price]
+        
+        return products
+    
+    def place_order(self, customer_name: str, product_id: str, quantity: int = 1):
+        """Place a new order"""
+        if product_id not in self.products:
+            return None, "Product not found"
+        
+        product = self.products[product_id]
+        if product["stock"] < quantity:
+            return None, f"Only {product['stock']} units available"
+        
+        # Update stock
+        self.products[product_id]["stock"] -= quantity
+        
+        # Create order
+        order_id = f"ORD{len(self.orders) + 1000}"
+        order = {
+            "id": order_id,
+            "customer_name": customer_name,
+            "product_id": product_id,
+            "product_name": product["name"],
+            "quantity": quantity,
+            "total": product["price"] * quantity,
+            "status": "confirmed",
+            "created_at": datetime.now().isoformat()
+        }
+        
+        self.orders[order_id] = order
+        return order_id, "Order placed successfully"
 
-DEMO_ORDERS = [
-    {"id": "ORD001", "customer": "John Kamau", "product": "Samsung Galaxy A54", "amount": 35000, "status": "delivered"},
-    {"id": "ORD002", "customer": "Mary Wanjiku", "product": "Dell Inspiron Laptop", "amount": 55000, "status": "shipped"},
-    {"id": "ORD003", "customer": "Peter Ochieng", "product": "Sony Wireless Headphones", "amount": 9000, "status": "processing"},
-]
+# Global data store
+data_store = DynamicDataStore()
 
 # =============================================================================
-# SASABOT TEXT-BASED TOOLS
+# AI-POWERED INTENT RECOGNITION
 # =============================================================================
 
-async def show_products_handler(category: str = "all"):
-    """Show available products"""
-    products = DEMO_PRODUCTS
-    if category != "all":
-        products = [p for p in products if category.lower() in p["category"].lower()]
+async def analyze_user_intent(message: str, user_type: str, conversation_history: list = []):
+    """Use GPT to understand user intent and extract parameters"""
     
-    if not products:
-        return f"😕 No products found in category '{category}'. Try 'show products' to see all items."
+    # Build context from conversation history
+    context = ""
+    if conversation_history:
+        recent_messages = conversation_history[-3:]  # Last 3 exchanges
+        context = "\n".join([f"User: {h['user_message']}\nAssistant: {h['ai_response']}" for h in recent_messages])
     
-    product_list = ["📦 **AVAILABLE PRODUCTS**\n"]
-    for i, product in enumerate(products, 1):
-        if product["stock"] > 10:
-            availability = "✅ In Stock"
-        elif product["stock"] > 5:
-            availability = f"📦 {product['stock']} available"
-        elif product["stock"] > 0:
-            availability = f"⚠️ Only {product['stock']} left!"
-        else:
-            availability = "❌ Out of Stock"
-        
-        product_list.append(
-            f"**{i}. {product['name']}**\n"
-            f"   💰 KSh {product['price']:,.0f}\n"
-            f"   📦 {availability}\n"
-            f"   🏷️ {product['category']}\n"
-        )
-    
-    footer = "\n💬 **To order:** Say 'buy [product name]' or ask 'how much is [product]?'"
-    return "\n".join(product_list) + footer
+    system_prompt = f"""You are an intelligent intent recognition system for Sasabot, a Kenyan business automation platform.
 
-async def add_product_handler(product_name: str, price: float, stock: int = 1, category: str = "General"):
-    """Add new product to inventory"""
-    # Check if product already exists
-    for product in DEMO_PRODUCTS:
-        if product["name"].lower() == product_name.lower():
-            return f"❌ Product '{product_name}' already exists. Use 'update product' to modify it."
-    
-    new_product = {
-        "id": str(len(DEMO_PRODUCTS) + 1),
-        "name": product_name,
-        "price": price,
-        "stock": stock,
-        "category": category
-    }
-    DEMO_PRODUCTS.append(new_product)
-    
-    return f"""✅ **Product Added Successfully!**
+Current user type: {user_type}
+Conversation context: {context}
 
-📱 **{product_name}**
-💰 Price: KSh {price:,.0f}
-📦 Stock: {stock} units
-🏷️ Category: {category}
+Analyze the user's message and return a JSON response with:
+1. "intent" - the primary intent (vendor intents: add_product, show_products, update_product, delete_product, generate_report, check_stock, update_stock; customer intents: browse_products, search_products, buy_product, track_order, add_to_cart, view_cart; general: help, switch_role, general_conversation)
+2. "confidence" - confidence score 0-1
+3. "parameters" - extracted parameters as key-value pairs
+4. "reasoning" - brief explanation of your analysis
 
-Product is now available for customers!"""
+For Kenyan context, understand:
+- Currency references (KSh, shillings)
+- Local products and brands
+- Natural language variations
+- Swahili and English mixed usage
 
-async def buy_product_handler(product_name: str, quantity: int = 1):
-    """Purchase a product"""
-    # Find product
-    for product in DEMO_PRODUCTS:
-        if product_name.lower() in product["name"].lower():
-            if product["stock"] >= quantity:
-                total = product["price"] * quantity
-                product["stock"] -= quantity
-                
-                # Generate order ID
-                order_id = f"ORD{len(DEMO_ORDERS) + 100:03d}"
-                
-                return f"""🛒 **Order Confirmed!**
+Examples:
+- "Add iPhone for 75k" -> intent: add_product, parameters: {{"product_name": "iPhone", "price": 75000}}
+- "Show me phones under 50k" -> intent: search_products, parameters: {{"search_term": "phones", "max_price": 50000}}
+- "How are sales today?" -> intent: generate_report, parameters: {{"period": "daily"}}"""
 
-📋 **Order ID:** {order_id}
-✅ **Product:** {product['name']} x{quantity}
-💰 **Total:** KSh {total:,.0f}
-
-📱 **Payment Options:**
-• M-Pesa: Pay via mobile money
-• Cash on Delivery: Pay when you receive
-
-🚚 **Delivery:**
-• Same day delivery in Nairobi
-• 1-2 days other areas
-• Delivery fee: KSh 200
-
-**Asante for shopping with Sasabot!**"""
-            else:
-                return f"❌ Sorry, only {product['stock']} units of {product['name']} available."
-    
-    return f"❌ Product '{product_name}' not found. Try 'show products' to see available items."
-
-async def daily_report_handler():
-    """Generate daily business report"""
-    total_inventory = sum(p["price"] * p["stock"] for p in DEMO_PRODUCTS)
-    low_stock_items = [p for p in DEMO_PRODUCTS if p["stock"] < 5]
-    out_of_stock = [p for p in DEMO_PRODUCTS if p["stock"] == 0]
-    
-    # Simulate daily sales data
-    daily_revenue = 85000
-    daily_orders = 4
-    daily_customers = 4
-    
-    report = f"""📊 **DAILY BUSINESS REPORT**
-📅 {datetime.now().strftime('%B %d, %Y')}
-
-💰 **Financial Performance:**
-• Daily Revenue: KSh {daily_revenue:,.0f}
-• Orders Processed: {daily_orders} orders
-• Unique Customers: {daily_customers} customers
-• Average Order Value: KSh {daily_revenue//daily_orders:,.0f}
-
-📦 **Inventory Overview:**
-• Total Products: {len(DEMO_PRODUCTS)} items
-• Total Inventory Value: KSh {total_inventory:,.0f}
-• Low Stock Items: {len(low_stock_items)} items
-• Out of Stock: {len(out_of_stock)} items"""
-
-    if low_stock_items:
-        report += "\n\n⚠️ **Low Stock Alerts:**"
-        for item in low_stock_items:
-            report += f"\n• {item['name']}: {item['stock']} units remaining"
-    
-    if out_of_stock:
-        report += "\n\n❌ **Out of Stock:**"
-        for item in out_of_stock:
-            report += f"\n• {item['name']}: Needs immediate restock"
-    
-    if not low_stock_items and not out_of_stock:
-        report += "\n\n✅ **All products have sufficient stock!**"
-    
-    report += "\n\n💡 **Recommendation:** " + (
-        "Focus on restocking low inventory items." if low_stock_items or out_of_stock 
-        else "Great inventory management! Consider expanding popular categories."
-    )
-    
-    return report
-
-async def search_products_handler(search_term: str):
-    """Search for products"""
-    if not search_term.strip():
-        return "🔍 What are you looking for? Try: 'search phones' or 'find laptops'"
-    
-    search_lower = search_term.lower()
-    matching_products = []
-    
-    for product in DEMO_PRODUCTS:
-        if (search_lower in product["name"].lower() or 
-            search_lower in product.get("category", "").lower()):
-            matching_products.append(product)
-    
-    if not matching_products:
-        return f"""🔍 **No products found for '{search_term}'**
-
-💡 **Try searching for:**
-• Phones, Laptops, Headphones
-• Electronics, Accessories
-• Or browse all products with 'show products'"""
-    
-    result = [f"🔍 **Search Results for '{search_term}'** ({len(matching_products)} found)\n"]
-    
-    for i, product in enumerate(matching_products, 1):
-        availability = "✅ Available" if product["stock"] > 5 else f"⚠️ Only {product['stock']} left"
-        result.append(
-            f"**{i}. {product['name']}**\n"
-            f"   💰 KSh {product['price']:,.0f}\n"
-            f"   📦 {availability}\n"
-        )
-    
-    result.append("💬 Say 'buy [product name]' to purchase or ask for more details!")
-    return "\n".join(result)
-
-async def track_order_handler(order_id: str = ""):
-    """Track order status"""
-    if order_id:
-        # Look for specific order
-        for order in DEMO_ORDERS:
-            if order_id.upper() in order["id"]:
-                status_emoji = {
-                    "pending": "⏳", "confirmed": "✅", "processing": "📦", 
-                    "shipped": "🚚", "delivered": "✅", "cancelled": "❌"
-                }
-                
-                return f"""📋 **ORDER TRACKING - {order['id']}**
-
-👤 **Customer:** {order['customer']}
-📱 **Product:** {order['product']}
-💰 **Amount:** KSh {order['amount']:,.0f}
-📊 **Status:** {status_emoji.get(order['status'], '📋')} {order['status'].title()}
-
-🚚 **Delivery Updates:**
-{
-    "✅ Order delivered successfully!" if order['status'] == 'delivered' else
-    "🚚 Your order is on the way! Expected delivery: Today" if order['status'] == 'shipped' else
-    "📦 Order is being prepared for shipment" if order['status'] == 'processing' else
-    "⏳ Order received, processing will begin shortly"
-}
-
-📞 **Need help?** Contact customer support anytime!"""
-        
-        return f"❌ Order '{order_id}' not found. Check your order ID and try again."
-    
-    # Show recent orders if no ID provided
-    if DEMO_ORDERS:
-        recent_orders = "📋 **Recent Orders:**\n\n"
-        for order in DEMO_ORDERS[-3:]:  # Show last 3 orders
-            status_emoji = {"pending": "⏳", "processing": "📦", "shipped": "🚚", "delivered": "✅"}
-            recent_orders += f"• **{order['id']}** - {order['product']} - {status_emoji.get(order['status'], '📋')} {order['status'].title()}\n"
-        
-        recent_orders += "\n💬 Say 'track [order ID]' for detailed tracking info!"
-        return recent_orders
-    
-    return "📋 No orders found. Place your first order to start tracking!"
-
-async def help_handler(user_type: str, topic: str = ""):
-    """Provide contextual help"""
-    if user_type == "vendor":
-        return """🆘 **VENDOR HELP GUIDE**
-
-**📦 Product Management:**
-• 'show products' - View your inventory
-• 'add product [name] [price]' - Add new items
-• 'show electronics' - Filter by category
-• 'search [term]' - Find specific products
-
-**📊 Business Reports:**
-• 'daily report' - Today's performance summary
-• 'weekly report' - 7-day business overview
-• 'inventory status' - Stock levels and alerts
-
-**💡 Natural Language Examples:**
-• "Add iPhone for 75000 with 5 units"
-• "Show me all electronics under 50k"
-• "What products are running low?"
-• "How did my business perform today?"
-
-**Need specific help?** Ask about: products, inventory, reports, or sales"""
-
-    elif user_type == "customer":
-        return """🆘 **CUSTOMER HELP GUIDE**
-
-**🛍️ Shopping Commands:**
-• 'show products' - Browse all items
-• 'show electronics' - Browse by category
-• 'search [item]' - Find specific products
-• 'buy [product]' - Purchase items
-• 'track order' - Check order status
-
-**💰 Price & Info:**
-• 'how much is [product]?' - Check prices
-• 'what phones do you have?' - Category browsing
-• 'products under 30k' - Price filtering
-
-**💡 Natural Language Examples:**
-• "I'm looking for a good laptop under 60k"
-• "Show me all phones available"
-• "Buy Samsung Galaxy phone"
-• "Track my recent order"
-
-**🎯 Payment:** M-Pesa and Cash on Delivery available
-**🚚 Delivery:** Same day in Nairobi, 1-2 days elsewhere"""
-
-    else:
-        return """🆘 **SASABOT HELP**
-
-**🎯 Getting Started:**
-• Say 'vendor' - Manage your business
-• Say 'customer' - Shop for products
-
-**🏪 For Business Owners:**
-• Complete inventory management
-• Sales reports and analytics
-• Business insights and recommendations
-• Natural language commands
-
-**🛒 For Customers:**
-• Easy product browsing
-• Simple ordering process
-• Order tracking
-• M-Pesa payment integration
-
-**🌟 Key Features:**
-• No rigid commands - just talk naturally!
-• Kenyan business context (KSh, M-Pesa, local terms)
-• Real-time inventory management
-• Comprehensive business reports
-
-**📱 Real Implementation:**
-This demo shows exactly how Sasabot works on WhatsApp for real Kenyan businesses!
-
-**Choose your role to get started:**
-• 'vendor' - Business management
-• 'customer' - Shopping experience"""
-
-# =============================================================================
-# INTENT RECOGNITION & ROUTING
-# =============================================================================
-
-async def parse_user_intent(message: str, user_type: str):
-    """Parse user intent from message"""
-    msg_lower = message.lower().strip()
-    
-    # Help requests
-    if any(word in msg_lower for word in ["help", "assistance", "commands", "what can you do"]):
-        return {"action": "help", "params": {"topic": ""}}
-    
-    # Role switching
-    if any(word in msg_lower for word in ["switch", "change role", "become customer", "become vendor"]):
-        if "customer" in msg_lower:
-            return {"action": "switch_role", "params": {"target_role": "customer"}}
-        elif "vendor" in msg_lower:
-            return {"action": "switch_role", "params": {"target_role": "vendor"}}
-    
-    if user_type == "vendor":
-        # Vendor-specific intents
-        if any(word in msg_lower for word in ["add", "create", "new product"]):
-            return {"action": "add_product", "params": {"message": message}}
-        
-        elif any(word in msg_lower for word in ["show", "list", "view", "products", "inventory"]):
-            category = "all"
-            if "electronics" in msg_lower:
-                category = "electronics"
-            elif "accessories" in msg_lower:
-                category = "accessories"
-            return {"action": "show_products", "params": {"category": category}}
-        
-        elif any(word in msg_lower for word in ["report", "sales", "revenue", "performance", "daily", "business"]):
-            return {"action": "daily_report", "params": {}}
-        
-        elif any(word in msg_lower for word in ["search", "find"]):
-            # Extract search term
-            for word in ["search", "find"]:
-                if word in msg_lower:
-                    search_term = msg_lower.split(word, 1)[1].strip()
-                    return {"action": "search_products", "params": {"search_term": search_term}}
-    
-    elif user_type == "customer":
-        # Customer-specific intents
-        if any(word in msg_lower for word in ["show", "browse", "products", "catalog", "available"]):
-            category = "all"
-            if "electronics" in msg_lower:
-                category = "electronics"
-            elif "accessories" in msg_lower:
-                category = "accessories"
-            return {"action": "show_products", "params": {"category": category}}
-        
-        elif any(word in msg_lower for word in ["search", "find", "looking for"]):
-            # Extract search term
-            for word in ["search", "find", "looking for"]:
-                if word in msg_lower:
-                    search_term = msg_lower.split(word, 1)[1].strip()
-                    return {"action": "search_products", "params": {"search_term": search_term}}
-        
-        elif any(word in msg_lower for word in ["buy", "purchase", "order", "want to buy"]):
-            # Extract product name
-            for word in ["buy", "purchase", "order", "want to buy"]:
-                if word in msg_lower:
-                    product_name = msg_lower.split(word, 1)[1].strip()
-                    return {"action": "buy_product", "params": {"product_name": product_name}}
-        
-        elif any(word in msg_lower for word in ["track", "order status", "my order"]):
-            # Extract order ID if provided
-            words = msg_lower.split()
-            order_id = ""
-            for word in words:
-                if word.startswith("ord") and len(word) > 3:
-                    order_id = word
-                    break
-            return {"action": "track_order", "params": {"order_id": order_id}}
-        
-        elif any(word in msg_lower for word in ["how much", "price", "cost"]):
-            return {"action": "show_products", "params": {"category": "all"}}
-    
-    # Default - general conversation
-    return {"action": "general_conversation", "params": {"message": message}}
-
-async def execute_action(action: str, params: dict, user_type: str):
-    """Execute the parsed action"""
     try:
-        if action == "help":
-            return await help_handler(user_type, params.get("topic", ""))
+        response = await client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Analyze this message: '{message}'"}
+            ],
+            temperature=0.3,
+            max_tokens=300
+        )
         
-        elif action == "switch_role":
-            target_role = params.get("target_role")
-            cl.user_session.set("user_type", target_role)
-            if target_role == "vendor":
-                return "🏪 **Switched to VENDOR mode**\n\nYou can now manage your business. Try:\n• 'show my products'\n• 'add product laptop 50000'\n• 'daily report'"
-            else:
-                return "🛒 **Switched to CUSTOMER mode**\n\nYou can now shop for products. Try:\n• 'show products'\n• 'buy phone'\n• 'search laptops'"
+        result = json.loads(response.choices[0].message.content)
+        return result
         
-        elif action == "show_products":
-            return await show_products_handler(params.get("category", "all"))
-        
-        elif action == "add_product":
-            # Parse product details from message
-            message = params.get("message", "")
-            words = message.split()
-            
-            # Simple parsing - can be enhanced
-            product_name = ""
-            price = 0
-            stock = 1
-            
-            # Look for price (numbers)
-            for word in words:
-                if word.replace(',', '').replace('.', '').isdigit():
-                    price = float(word.replace(',', ''))
-                    break
-            
-            # Get product name (words before price)
-            name_words = []
-            for word in words:
-                if word.replace(',', '').replace('.', '').isdigit():
-                    break
-                if word.lower() not in ["add", "product", "new"]:
-                    name_words.append(word)
-            
-            product_name = " ".join(name_words)
-            
-            if not product_name or price <= 0:
-                return "🤔 Please specify product name and price.\n\nExample: 'Add product iPhone 75000'\nOr: 'Add laptop for 55000 with 3 units'"
-            
-            return await add_product_handler(product_name, price, stock)
-        
-        elif action == "buy_product":
-            product_name = params.get("product_name", "").strip()
-            if not product_name:
-                return "🛒 Which product would you like to buy?\n\nTry: 'Buy Samsung phone' or browse products first with 'show products'"
-            return await buy_product_handler(product_name)
-        
-        elif action == "daily_report":
-            return await daily_report_handler()
-        
-        elif action == "search_products":
-            return await search_products_handler(params.get("search_term", ""))
-        
-        elif action == "track_order":
-            return await track_order_handler(params.get("order_id", ""))
-        
-        else:
-            # General conversation fallback
-            if user_type == "vendor":
-                return "🏪 I'm here to help manage your business!\n\nTry:\n• 'show my products'\n• 'add product [name] [price]'\n• 'daily report'\n• 'help' for more options"
-            elif user_type == "customer":
-                return "🛒 I'm here to help you shop!\n\nTry:\n• 'show products'\n• 'search for [item]'\n• 'buy [product]'\n• 'help' for more options"
-            else:
-                return "🤖 Please choose your role first:\n• Say 'vendor' for business management\n• Say 'customer' for shopping"
-    
     except Exception as e:
-        logger.error(f"Error executing action {action}: {e}")
-        return "😔 Sorry, I encountered an error. Please try again or type 'help' for assistance."
+        logger.error(f"Error in AI intent analysis: {e}")
+        # Fallback to simple keyword matching
+        return {
+            "intent": "general_conversation",
+            "confidence": 0.5,
+            "parameters": {},
+            "reasoning": "Fallback to general conversation due to analysis error"
+        }
 
 # =============================================================================
-# CHAINLIT APP
+# AI-POWERED RESPONSE GENERATION
+# =============================================================================
+
+async def generate_dynamic_response(intent: str, parameters: dict, user_type: str, context: dict = {}):
+    """Generate contextual responses using GPT"""
+    
+    system_prompt = f"""You are Sasabot, an intelligent AI assistant for Kenyan businesses and customers.
+
+Current context:
+- User type: {user_type}
+- Intent: {intent}
+- Parameters: {json.dumps(parameters)}
+- Additional context: {json.dumps(context)}
+
+Guidelines:
+1. Use Kenyan context (KSh currency, local greetings like "Karibu", "Asante")
+2. Be conversational and helpful
+3. Include relevant emojis
+4. Format prices as "KSh X,XXX"
+5. Provide actionable next steps
+6. Be encouraging and supportive
+
+For business owners: Focus on growth, efficiency, and insights
+For customers: Focus on great shopping experience and support
+
+Generate a natural, helpful response that addresses the user's intent."""
+
+    try:
+        response = await client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Generate response for intent '{intent}' with parameters {parameters}"}
+            ],
+            temperature=0.7,
+            max_tokens=500
+        )
+        
+        return response.choices[0].message.content
+        
+    except Exception as e:
+        logger.error(f"Error generating dynamic response: {e}")
+        return "I understand what you're looking for. Let me help you with that!"
+
+# =============================================================================
+# DYNAMIC ACTION HANDLERS
+# =============================================================================
+
+async def handle_vendor_action(intent: str, parameters: dict, user_type: str):
+    """Handle vendor actions dynamically"""
+    
+    if intent == "add_product":
+        product_name = parameters.get("product_name", "")
+        price = parameters.get("price", 0)
+        stock = parameters.get("stock", 1)
+        category = parameters.get("category", "General")
+        
+        if not product_name or price <= 0:
+            response = await generate_dynamic_response(
+                "error", 
+                {"message": "Missing product name or invalid price"}, 
+                user_type
+            )
+            return response
+        
+        business_id = cl.user_session.get("business_id", "mama_jane_electronics")
+        product_id = data_store.add_product(business_id, product_name, price, stock, category)
+        
+        context = {
+            "product_added": True,
+            "product_name": product_name,
+            "price": price,
+            "stock": stock,
+            "product_id": product_id
+        }
+        
+        return await generate_dynamic_response("add_product_success", parameters, user_type, context)
+    
+    elif intent == "show_products":
+        business_id = cl.user_session.get("business_id", "mama_jane_electronics")
+        products = data_store.get_products(business_id=business_id)
+        
+        if not products:
+            return await generate_dynamic_response("no_products", {}, user_type)
+        
+        # Create dynamic product listing
+        product_list = []
+        total_value = 0
+        low_stock_count = 0
+        
+        for i, product in enumerate(products, 1):
+            stock_status = "✅ In Stock" if product["stock"] > 5 else f"⚠️ Only {product['stock']} left"
+            if product["stock"] == 0:
+                stock_status = "❌ Out of Stock"
+                
+            if product["stock"] < 5:
+                low_stock_count += 1
+                
+            product_list.append(f"**{i}. {product['name']}**\n   💰 KSh {product['price']:,.0f} | 📦 {stock_status}")
+            total_value += product['price'] * product['stock']
+        
+        context = {
+            "products": products,
+            "product_list": "\n\n".join(product_list),
+            "total_value": total_value,
+            "low_stock_count": low_stock_count,
+            "total_products": len(products)
+        }
+        
+        return await generate_dynamic_response("show_products", {}, user_type, context)
+    
+    elif intent == "generate_report":
+        period = parameters.get("period", "daily")
+        business_id = cl.user_session.get("business_id", "mama_jane_electronics")
+        
+        # Calculate dynamic metrics
+        products = data_store.get_products(business_id=business_id)
+        orders = [o for o in data_store.orders.values() if any(p["business_id"] == business_id for p in products if p["id"] == o["product_id"])]
+        
+        total_revenue = sum(order["total"] for order in orders)
+        total_orders = len(orders)
+        total_products = len(products)
+        inventory_value = sum(p["price"] * p["stock"] for p in products)
+        
+        context = {
+            "period": period,
+            "total_revenue": total_revenue,
+            "total_orders": total_orders,
+            "total_products": total_products,
+            "inventory_value": inventory_value,
+            "avg_order_value": total_revenue / max(total_orders, 1)
+        }
+        
+        return await generate_dynamic_response("business_report", parameters, user_type, context)
+    
+    # Add more vendor actions as needed
+    return await generate_dynamic_response(intent, parameters, user_type)
+
+async def handle_customer_action(intent: str, parameters: dict, user_type: str):
+    """Handle customer actions dynamically"""
+    
+    if intent == "browse_products" or intent == "search_products":
+        category = parameters.get("category")
+        max_price = parameters.get("max_price")
+        search_term = parameters.get("search_term", "")
+        
+        products = data_store.get_products(category=category, max_price=max_price)
+        
+        # Filter by search term if provided
+        if search_term:
+            products = [p for p in products if search_term.lower() in p["name"].lower()]
+        
+        if not products:
+            return await generate_dynamic_response("no_products_found", parameters, user_type)
+        
+        # Create dynamic product listing for customers
+        product_list = []
+        for i, product in enumerate(products, 1):
+            availability = "✅ Available" if product["stock"] > 5 else f"⚠️ Only {product['stock']} left"
+            if product["stock"] == 0:
+                availability = "❌ Out of Stock"
+                
+            product_list.append(f"**{i}. {product['name']}**\n   💰 KSh {product['price']:,.0f}\n   📦 {availability}")
+        
+        context = {
+            "products": products,
+            "product_list": "\n\n".join(product_list),
+            "total_found": len(products),
+            "search_term": search_term,
+            "category": category,
+            "max_price": max_price
+        }
+        
+        return await generate_dynamic_response("product_listing", parameters, user_type, context)
+    
+    elif intent == "buy_product":
+        product_name = parameters.get("product_name", "").strip()
+        quantity = parameters.get("quantity", 1)
+        
+        if not product_name:
+            return await generate_dynamic_response("missing_product_name", {}, user_type)
+        
+        # Find product by name
+        matching_products = [p for p in data_store.products.values() if product_name.lower() in p["name"].lower()]
+        
+        if not matching_products:
+            context = {"product_name": product_name}
+            return await generate_dynamic_response("product_not_found", parameters, user_type, context)
+        
+        product = matching_products[0]  # Take first match
+        customer_name = cl.user_session.get("customer_name", "Customer")
+        
+        order_id, message = data_store.place_order(customer_name, product["id"], quantity)
+        
+        if order_id:
+            context = {
+                "order_placed": True,
+                "order_id": order_id,
+                "product_name": product["name"],
+                "quantity": quantity,
+                "total": product["price"] * quantity
+            }
+            return await generate_dynamic_response("order_success", parameters, user_type, context)
+        else:
+            context = {"error_message": message}
+            return await generate_dynamic_response("order_failed", parameters, user_type, context)
+    
+    # Add more customer actions as needed
+    return await generate_dynamic_response(intent, parameters, user_type)
+
+# =============================================================================
+# MAIN CHAT HANDLERS
 # =============================================================================
 
 @cl.on_chat_start
 async def start():
-    """Initialize Sasabot Text Demo"""
+    """Initialize Dynamic Sasabot"""
     try:
-        # Initialize user session
         cl.user_session.set("user_type", "unknown")
+        cl.user_session.set("conversation_history", [])
         cl.user_session.set("message_count", 0)
         
-        # Send welcome message
         welcome_msg = """🤖 **Karibu to Sasabot!**
 
-I'm an AI assistant built specifically for Kenyan businesses and their customers.
+I'm an AI-powered assistant that adapts to your needs in real-time.
 
-**🎯 Choose your experience:**
+**🧠 What makes me:**
+• I understand natural language using AI
+• I learn from our conversation
+• I adapt responses based on context
+• I can handle new scenarios intelligently
 
-👨‍💼 **BUSINESS OWNERS** - Say **"vendor"** or **"business owner"**
-• Manage your inventory and products
-• Generate sales reports and analytics
-• Get business insights and recommendations
-• Track performance and revenue
+**🎯 Choose your role:**
+👨‍💼 **"vendor"** or **"business owner"** - AI-powered business management
+👥 **"customer"** or **"shopper"** - Intelligent shopping assistant
 
-👥 **CUSTOMERS** - Say **"customer"** or **"shopper"**
-• Browse and search for products
-• Place orders with M-Pesa payments
-• Track deliveries and order status
-• Get personalized shopping assistance
-
-**🇰🇪 Built for Kenya:**
-• M-Pesa payment integration
-• KSh currency and local context
-• Swahili + English support
-• SME-focused features
-
-**📱 Real Implementation:**
-*This demo shows exactly how Sasabot works on WhatsApp for real businesses!*
-
-**💬 Just say "vendor" or "customer" to get started!**"""
+**Just start talking naturally - I'll understand! 🚀**"""
 
         await cl.Message(content=welcome_msg).send()
-        logger.info("Sasabot text demo initialized successfully")
+        logger.info("Dynamic Sasabot initialized")
         
     except Exception as e:
-        logger.error(f"Failed to start Sasabot: {e}")
-        await cl.ErrorMessage(
-            content="😔 Sorry, there was an error starting Sasabot. Please refresh and try again."
-        ).send()
+        logger.error(f"Error starting Dynamic Sasabot: {e}")
+        await cl.ErrorMessage(content="😔 Error starting Sasabot. Please try again.").send()
 
 @cl.on_message
 async def on_message(message: cl.Message):
-    """Handle incoming text messages"""
+    """Handle messages with AI-powered understanding"""
     try:
         user_type = cl.user_session.get("user_type", "unknown")
+        conversation_history = cl.user_session.get("conversation_history", [])
         message_count = cl.user_session.get("message_count", 0) + 1
         cl.user_session.set("message_count", message_count)
         
-        msg_lower = message.content.lower()
+        msg_content = message.content.strip()
         
         # Handle role selection for new users
         if user_type == "unknown":
-            if any(word in msg_lower for word in ["vendor", "business", "owner", "manage", "sell"]):
+            if any(word in msg_content.lower() for word in ["vendor", "business", "owner", "manage"]):
                 cl.user_session.set("user_type", "vendor")
-                response = """🏪 **VENDOR MODE ACTIVATED!**
-
-Welcome to your AI business dashboard! You can now:
-
-📦 **Manage Products:**
-• 'show my products' - View inventory
-• 'add product [name] [price]' - Add items
-• 'search [product]' - Find specific items
-
-📊 **Business Analytics:**
-• 'daily report' - Performance summary
-• 'inventory status' - Stock levels
-• 'sales overview' - Revenue insights
-
-💡 **Natural Language:**
-Just talk normally! Say things like:
-• "Add iPhone for 75000"
-• "Show me all electronics"
-• "How is business today?"
-
-**What would you like to do first?**"""
+                cl.user_session.set("business_id", "mama_jane_electronics")
+                
+                response = await generate_dynamic_response(
+                    "role_activated", 
+                    {"role": "vendor"}, 
+                    "vendor"
+                )
                 await cl.Message(content=response).send()
                 return
                 
-            elif any(word in msg_lower for word in ["customer", "shop", "buy", "browse", "purchase"]):
+            elif any(word in msg_content.lower() for word in ["customer", "shop", "buy", "browse"]):
                 cl.user_session.set("user_type", "customer")
-                response = """🛒 **CUSTOMER MODE ACTIVATED!**
-
-Welcome to Sasabot Marketplace! You can now:
-
-🛍️ **Browse & Shop:**
-• 'show products' - View all items
-• 'search [item]' - Find specific products
-• 'show electronics' - Browse by category
-• 'buy [product]' - Purchase items
-
-💰 **Pricing & Orders:**
-• 'how much is [product]?' - Check prices
-• 'track my order' - Order status
-• 'products under 30k' - Price filtering
-
-💡 **Natural Shopping:**
-Just ask naturally! Say things like:
-• "Show me phones under 50k"
-• "I want to buy a laptop"
-• "What headphones do you have?"
-
-**What are you looking for today?**"""
+                cl.user_session.set("customer_name", "Valued Customer")
+                
+                response = await generate_dynamic_response(
+                    "role_activated", 
+                    {"role": "customer"}, 
+                    "customer"
+                )
                 await cl.Message(content=response).send()
                 return
-            
             else:
-                response = """🤔 **Let me help you choose your role:**
-
-**Say one of these:**
-👨‍💼 **"vendor"** or **"business owner"** - Manage your business
-👥 **"customer"** or **"shopper"** - Browse and buy products
-
-**Or describe what you want to do:**
-• "I want to manage my inventory"
-• "I'm looking to buy a phone"
-• "Show me the business dashboard"
-• "I want to shop for electronics"
-
-**What brings you to Sasabot today?**"""
+                response = await generate_dynamic_response(
+                    "role_selection_needed", 
+                    {}, 
+                    "unknown"
+                )
                 await cl.Message(content=response).send()
                 return
         
-        # Parse user intent and execute action
-        intent_result = await parse_user_intent(message.content, user_type)
-        response = await execute_action(
-            intent_result["action"], 
-            intent_result["params"], 
-            user_type
-        )
+        # AI-powered intent analysis
+        intent_analysis = await analyze_user_intent(msg_content, user_type, conversation_history)
+        
+        logger.info(f"AI Analysis: {intent_analysis}")
+        
+        intent = intent_analysis["intent"]
+        parameters = intent_analysis["parameters"]
+        confidence = intent_analysis["confidence"]
+        
+        # Handle the intent dynamically
+        if user_type == "vendor":
+            response = await handle_vendor_action(intent, parameters, user_type)
+        elif user_type == "customer":
+            response = await handle_customer_action(intent, parameters, user_type)
+        else:
+            response = await generate_dynamic_response(intent, parameters, user_type)
         
         await cl.Message(content=response).send()
         
+        # Update conversation history
+        conversation_history.append({
+            "user_message": msg_content,
+            "ai_response": response,
+            "intent": intent,
+            "confidence": confidence,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+        # Keep only last 10 exchanges
+        if len(conversation_history) > 10:
+            conversation_history = conversation_history[-10:]
+        
+        cl.user_session.set("conversation_history", conversation_history)
+        
     except Exception as e:
         logger.error(f"Error handling message: {e}")
-        await cl.ErrorMessage(
-            content="😔 Sorry, I encountered an error. Please try again or type 'help' for assistance."
-        ).send()
+        await cl.ErrorMessage(content="😔 I encountered an error. Please try rephrasing your message.").send()
 
 @cl.on_chat_end
 @cl.on_stop
 async def on_end():
-    """Clean up when conversation ends"""
+    """Cleanup"""
     try:
         message_count = cl.user_session.get("message_count", 0)
         user_type = cl.user_session.get("user_type", "unknown")
-        logger.info(f"Text session ended - User type: {user_type}, Messages: {message_count}")
+        logger.info(f"Dynamic session ended - User: {user_type}, Messages: {message_count}")
     except Exception as e:
         logger.error(f"Error during cleanup: {e}")
 
 if __name__ == "__main__":
-    logger.info("Starting Sasabot text-only demo...")
+    logger.info("Starting Dynamic AI-Powered Sasabot...")
