@@ -1,7 +1,9 @@
 1. hullicante when you ask to add a new product (it should add details around the product/price/category/etc.)
 2. there is an issue with how the agent is referrign to products (e.g: where are you getting SONY-WH-003, we have SONY-WH-001), not deleting or searching the product as expected but query them all when you ask it to list all products. 
+
 3. it is using the default businesses and it can't change between stores 
-4. the bot should introduce itself as a bot (to avoid being banned)
+
+DONE: 4. the bot should introduce itself as a bot (to avoid being banned)
 5. the welcome message should have name of the business (i.e welcome to Jules's Store, I am sasabot AI assistant ready to help with you need, and {list all services} how can i help you)
 6. Integrate with wstp
 7. Look into deploying and cloud
@@ -10,4 +12,4 @@
 
 8. track charts to see where the AI is failing or hullicate
 9. search by picture using YOLO
-10. basic business metrics/stats 
+10. basic business metrics/stats
