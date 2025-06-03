@@ -6,3 +6,15 @@ __pycache__
 .env
 .files
 backups\
+
+
+# make dev
+# make logs
+# make shell
+# make stop
+
+# make prod
+
+# make build
+# make clean
+# make rebuild

@@ -163,20 +163,5 @@
     "id": "104",
     "created_at": "2025-06-02T20:44:44.173611",
     "updated_at": "2025-06-02T20:44:44.173611"
-  },
-  {
-    "name": "500ml Steel Water Bottle",
-    "price": 100.0,
-    "stock": 1000,
-    "category": "Household Items",
-    "business_id": "mama_jane_electronics",
-    "description": "Stainless steel that works best for carrying water",
-    "sku": "500MLS-0603",
-    "brand": "Apple Bottles",
-    "warranty": "2-years",
-    "status": "active",
-    "id": "105",
-    "created_at": "2025-06-03T22:10:03.434562",
-    "updated_at": "2025-06-03T22:10:03.434562"
   }
 ]
