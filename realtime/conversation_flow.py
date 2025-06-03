@@ -69,7 +69,7 @@ I'm your AI business assistant. I can help you:
 **What would you like to do first?**"""
 
     elif user_type == "customer":
-        message = """🛒 **Karibu to Sasabot Marketplace!**
+        message = """🛒 **Karibu to Sasabot Marketplace, I am AI assistant!**
 
 I'm here to make your shopping experience amazing! I can help with:
 
@@ -105,7 +105,7 @@ I'm here to make your shopping experience amazing! I can help with:
 **What are you looking for today?**"""
 
     else:
-        message = """🤖 **Karibu to Sasabot!**
+        message = """🤖 **Karibu to Sasabot, I am AI assistant!**
 
 I'm an AI assistant built for Kenyan businesses and their customers.
 
