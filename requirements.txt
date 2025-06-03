@@ -3,3 +3,11 @@ openai
 plotly
 websockets==14.1
 streamlit
+
+# Additional dependencies that might be needed
+python-dotenv
+requests
+
+# For WhatsApp integration
+# flask
+# gunicorn

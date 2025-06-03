@@ -352,6 +352,136 @@ class JSONDatabase:
         except Exception as e:
             print(f"❌ Error creating full backup: {e}")
             return ""
+        
+    def get_contextual_product_info(self, business_id: str, user_search: str = "") -> Dict:
+        """Get rich product context for LLM processing"""
+        try:
+            products = self.get_products_by_business(business_id)
+            business = self.get_business(business_id)
+            
+            return {
+                "all_products": [
+                    {
+                        "id": p.get('id'),
+                        "name": p.get('name'),
+                        "price": p.get('price', 0),
+                        "stock": p.get('stock', 0),
+                        "category": p.get('category', ''),
+                        "brand": p.get('brand', '')
+                    }
+                    for p in products if p.get('status') == 'active'
+                ],
+                "user_search_term": user_search,
+                "business_name": business.get('name', 'Unknown Business') if business else 'Unknown Business',
+                "business_id": business_id,
+                "total_count": len(products),
+                "categories": list(set(p.get('category', 'Unknown') for p in products))
+            }
+        except Exception as e:
+            return {
+                "all_products": [],
+                "user_search_term": user_search,
+                "business_name": "Unknown Business",
+                "business_id": business_id,
+                "total_count": 0,
+                "categories": [],
+                "error": str(e)
+            }
+
+    def validate_product_reference(self, product_identifier: str, business_id: str) -> Dict:
+        """
+        Validate if product exists and provide context if not
+        Returns comprehensive validation result for LLM processing
+        """
+        try:
+            # Try finding by ID first
+            product = None
+            if product_identifier.isdigit():
+                product = self.get_product_by_id(product_identifier)
+                # Verify it belongs to the business
+                if product and product.get('business_id') != business_id:
+                    product = None
+            
+            # If not found by ID, try by name
+            if not product:
+                product = self.find_product_by_name(product_identifier, business_id)
+            
+            if product:
+                return {
+                    "exists": True,
+                    "product": product,
+                    "match_type": "exact",
+                    "context": None
+                }
+            else:
+                # Product not found - get full context for LLM
+                context = self.get_contextual_product_info(business_id, product_identifier)
+                
+                return {
+                    "exists": False,
+                    "product": None,
+                    "match_type": "none",
+                    "context": context,
+                    "search_term": product_identifier,
+                    "suggestion_prompt": f"User searched for '{product_identifier}' but it wasn't found. Help them find the right product from the available list."
+                }
+        except Exception as e:
+            return {
+                "exists": False,
+                "product": None,
+                "match_type": "error",
+                "context": self.get_contextual_product_info(business_id, product_identifier),
+                "error": str(e)
+            }
+
+    def format_product_display(self, product: Dict) -> str:
+        """Standardized product display format with prominent ID"""
+        try:
+            name = product.get('name', 'Unknown Product')
+            price = product.get('price', 0)
+            stock = product.get('stock', 0)
+            product_id = product.get('id', 'N/A')
+            brand = product.get('brand', '')
+            category = product.get('category', '')
+            
+            display = f"🆔 **ID: {product_id}**"
+            
+            if brand:
+                display += f" | 🏷️ {brand} {name}"
+            else:
+                display += f" | 📱 {name}"
+                
+            display += f" | 💰 KSh {price:,}"
+            display += f" | 📦 {stock} in stock"
+            
+            if category:
+                display += f" | 📂 {category}"
+                
+            return display
+        except Exception:
+            return f"🆔 **ID: {product.get('id', 'Unknown')}** | {product.get('name', 'Unknown Product')}"
+
+    def get_product_quick_reference(self, business_id: str) -> str:
+        """Generate quick reference guide for product operations"""
+        try:
+            products = self.get_products_by_business(business_id)
+            if not products:
+                return "No products available"
+            
+            reference = "💡 **Quick Reference:**\n"
+            reference += "To update: 'update product [ID]' or 'update [product name]'\n"
+            reference += "To delete: 'delete product [ID]' or 'delete [product name]'\n\n"
+            reference += "**Available Product IDs:**\n"
+            
+            for product in products[:10]:  # Show first 10
+                reference += f"• ID: {product.get('id')} = {product.get('name', 'Unknown')}\n"
+                
+            if len(products) > 10:
+                reference += f"... and {len(products) - 10} more products\n"
+                
+            return reference
+        except Exception:
+            return "Error generating quick reference"
 
 
 # =============================================================================

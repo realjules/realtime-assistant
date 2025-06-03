@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  sasabot:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ENVIRONMENT=development
+    volumes:
+      # Mount your JSON data directory for persistence
+      - ./data:/app/data
+      # Mount source code for live development (optional)
+      - ./app.py:/app/app.py
+      - ./realtime:/app/realtime
+      - ./utils:/app/utils
+      - ./chainlit.md:/app/chainlit.md
+    restart: unless-stopped
+    stdin_open: true
+    tty: true

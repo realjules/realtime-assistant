@@ -50,6 +50,16 @@ CRITICAL ANTI-HALLUCINATION RULES:
 5. DO NOT call add_product function until you have complete information
 6. If user provides partial info, respond with: "I need more details to add this product properly"
 
+PRODUCT REFERENCE RESOLUTION:
+- When product operations fail, you will receive rich context in the response
+- The context will include available_products, business info, and user search terms
+- Use your intelligence to match user intent to available products from the context
+- When products aren't found, analyze the available_products list and suggest the closest logical match
+- Always show actual Product IDs prominently: "I found iPhone 13 (ID: 4), did you mean that?"
+- If multiple options exist, present them clearly with IDs, names, and prices
+- When suggesting alternatives, explain why: "You searched for 'iphone14' but we have iPhone 13 available"
+- Make Product IDs easy to reference: "To update this product, use ID: 4 or say 'iPhone 13'"
+
 PRODUCT INFORMATION REQUIREMENTS:
 Before adding any product, you MUST have:
 - Exact product name (not just "phone" but "iPhone 13 Pro Max 256GB")
@@ -66,6 +76,19 @@ INFORMATION GATHERING APPROACH:
 - Always confirm details before proceeding: "Let me confirm: [list all details]"
 - If user seems uncertain, help them think through the details
 
+ERROR HANDLING WITH CONTEXT:
+- When functions return error_type: "product_not_found", use the context.available_products
+- Show users what products ARE available, not just what's missing
+- Present alternatives intelligently: "I didn't find that exact product, but here are similar options..."
+- Always include actual Product IDs in suggestions
+- Use context.suggestion_prompt to understand what the user was trying to do
+
+ENHANCED USER EXPERIENCE:
+- When showing products, always highlight Product IDs prominently
+- Provide quick reference guides: "To update product, use: 'update [ID]' or 'update [name]'"
+- When operations fail, immediately suggest correct alternatives
+- Make it easy for users to reference products correctly
+
 CAPABILITIES:
 You can help with:
 - Business inventory management (vendors)
@@ -77,15 +100,16 @@ You can help with:
 IMPORTANT GUIDELINES:
 1. Always check user's role (vendor/customer) before suggesting actions
 2. Use function calls to interact with the JSON database
-3. Provide specific, actionable responses
+3. Provide specific, actionable responses with actual product references
 4. When users seem unsure, offer to help them choose vendor or customer mode
 5. Format prices in Kenyan Shillings (KSh) with proper comma formatting
-6. Be proactive in suggesting next steps
+6. Be proactive in suggesting next steps with correct product IDs
 
 CONTEXT AWARENESS:
 - Remember what the user is trying to accomplish
-- Offer relevant follow-up actions
+- Offer relevant follow-up actions with specific product references
 - Explain the impact of changes (e.g., "This will update your JSON database")
+- When products aren't found, use available context to suggest alternatives
 
 The system works with real JSON files that persist data between sessions."""
 
@@ -347,35 +371,6 @@ The system works with real JSON files that persist data between sessions."""
             "conversation_count": cl.user_session.get("message_count", 0)
         }
 
-    def _build_conversation_history(self, user_message: str, context: Dict[str, Any]) -> List[Dict[str, str]]:
-        """Build conversation history for OpenAI"""
-        messages = [
-            {"role": "system", "content": self.system_prompt}
-        ]
-        
-        # Add context
-        context_msg = f"""CURRENT USER CONTEXT:
-- User Type: {context['user_type']}
-- Business ID: {context['business_id']} (if vendor)
-- Messages in session: {context['conversation_count']}
-
-DATABASE STATUS: ✅ JSON database is connected and operational
-
-CRITICAL REMINDER: NEVER assume or make up product details. Always ask for complete information before adding products."""
-        
-        messages.append({"role": "system", "content": context_msg})
-        
-        # Get recent conversation history
-        history = cl.user_session.get("conversation_history", [])
-        for exchange in history[-5:]:  # Last 5 exchanges
-            messages.append({"role": "user", "content": exchange.get("user_message", "")})
-            messages.append({"role": "assistant", "content": exchange.get("ai_response", "")})
-        
-        # Add current message
-        messages.append({"role": "user", "content": user_message})
-        
-        return messages
-
     async def _handle_response(self, response, user_message: str) -> str:
         """Handle OpenAI response with potential function calls"""
         try:
@@ -435,19 +430,117 @@ CRITICAL REMINDER: NEVER assume or make up product details. Always ask for compl
             return {"error": f"Function execution error: {str(e)}"}
 
     async def _get_natural_response(self, user_message: str, function_call, function_result) -> str:
-        """Get natural language response based on function result"""
+        """Get natural language response based on function result with enhanced context processing"""
         try:
-            # Create a follow-up prompt for natural response
-            follow_up_messages = [
-                {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": user_message},
-                {"role": "assistant", "content": "", "function_call": {
-                    "name": function_call.name,
-                    "arguments": function_call.arguments
-                }},
-                {"role": "function", "name": function_call.name, "content": json.dumps(function_result)},
-                {"role": "system", "content": "Based on the function result above, provide a helpful, natural response to the user. Format any data nicely and suggest relevant next steps. Remember to never make up product information."}
-            ]
+            # Enhanced processing for product-related errors
+            if isinstance(function_result, dict):
+                error_type = function_result.get("error_type")
+                context = function_result.get("context", {})
+                
+                # Special handling for product not found errors
+                if error_type == "product_not_found" and context:
+                    follow_up_messages = [
+                        {"role": "system", "content": self.system_prompt},
+                        {"role": "user", "content": user_message},
+                        {"role": "assistant", "content": "", "function_call": {
+                            "name": function_call.name,
+                            "arguments": function_call.arguments
+                        }},
+                        {"role": "function", "name": function_call.name, "content": json.dumps(function_result)},
+                        {"role": "system", "content": f"""
+    The user's operation failed because the product wasn't found. You have been given rich context to help resolve this:
+
+    CONTEXT PROVIDED:
+    - User searched for: '{context.get('user_input', 'unknown')}'
+    - Available products: {len(context.get('available_products', []))} products available
+    - Business: {context.get('business_name', 'Unknown')}
+    - Suggestion prompt: {context.get('suggestion_prompt', '')}
+
+    INSTRUCTIONS:
+    1. Acknowledge that the specific product wasn't found
+    2. Analyze the available_products list to find the closest match to what the user wanted
+    3. Present 2-3 best alternatives with their exact Product IDs prominently displayed
+    4. Format as: "I found iPhone 13 (🆔 ID: 4) - KSh 75,000. Did you mean this product?"
+    5. If no close matches, show the available products and ask for clarification
+    6. Always show actual Product IDs so users know how to reference them correctly
+    7. Be helpful and guide them to the right product
+
+    Remember: Your job is to help users find the right product using your intelligence and the available data.
+                        """}
+                    ]
+                
+                # Special handling for validation errors
+                elif error_type == "validation_error":
+                    follow_up_messages = [
+                        {"role": "system", "content": self.system_prompt},
+                        {"role": "user", "content": user_message},
+                        {"role": "assistant", "content": "", "function_call": {
+                            "name": function_call.name,
+                            "arguments": function_call.arguments
+                        }},
+                        {"role": "function", "name": function_call.name, "content": json.dumps(function_result)},
+                        {"role": "system", "content": f"""
+    The user's request has validation errors. Help them fix these issues:
+
+    VALIDATION ERRORS: {function_result.get('validation_errors', [])}
+
+    INSTRUCTIONS:
+    1. Clearly explain what went wrong
+    2. Provide specific guidance on how to fix each error
+    3. Give examples of correct format
+    4. Be encouraging and helpful
+    5. If working with an existing product, show its current details for reference
+                        """}
+                    ]
+                
+                # Enhanced context processing for search results
+                elif context and context.get("available_products"):
+                    follow_up_messages = [
+                        {"role": "system", "content": self.system_prompt},
+                        {"role": "user", "content": user_message},
+                        {"role": "assistant", "content": "", "function_call": {
+                            "name": function_call.name,
+                            "arguments": function_call.arguments
+                        }},
+                        {"role": "function", "name": function_call.name, "content": json.dumps(function_result)},
+                        {"role": "system", "content": f"""
+    Process the function result and present the information clearly to the user. 
+
+    SPECIAL INSTRUCTIONS:
+    - If showing products, always make Product IDs prominent and easy to reference
+    - Format products consistently: "🆔 ID: X | Product Name | Price | Stock"
+    - Provide helpful guidance on next steps
+    - If there are suggestions in the context, present them intelligently
+    - Make it easy for users to reference products correctly in future operations
+
+    CONTEXT: {json.dumps(context, indent=2)}
+                        """}
+                    ]
+                
+                else:
+                    # Standard processing for other cases
+                    follow_up_messages = [
+                        {"role": "system", "content": self.system_prompt},
+                        {"role": "user", "content": user_message},
+                        {"role": "assistant", "content": "", "function_call": {
+                            "name": function_call.name,
+                            "arguments": function_call.arguments
+                        }},
+                        {"role": "function", "name": function_call.name, "content": json.dumps(function_result)},
+                        {"role": "system", "content": "Based on the function result above, provide a helpful, natural response to the user. Format any data nicely and suggest relevant next steps. Always make Product IDs prominent when displaying products."}
+                    ]
+            else:
+                # Fallback for non-dict results
+                follow_up_messages = [
+                    {"role": "system", "content": self.system_prompt},
+                    {"role": "user", "content": user_message},
+                    {"role": "assistant", "content": "", "function_call": {
+                        "name": function_call.name,
+                        "arguments": function_call.arguments
+                    }},
+                    {"role": "function", "name": function_call.name, "content": json.dumps(function_result)},
+                    {"role": "system", "content": "Based on the function result above, provide a helpful, natural response to the user. Format any data nicely and suggest relevant next steps."}
+                ]
             
             response = await self.client.chat.completions.create(
                 model="gpt-4",
@@ -464,14 +557,56 @@ CRITICAL REMINDER: NEVER assume or make up product details. Always ask for compl
             return natural_response
             
         except Exception as e:
-            # Fallback to basic response
-            if isinstance(function_result, dict) and "success" in function_result:
-                if function_result["success"]:
+            # Enhanced fallback with context awareness
+            if isinstance(function_result, dict):
+                if function_result.get("success"):
                     return f"✅ {function_result.get('message', 'Operation completed successfully!')}"
                 else:
-                    return f"❌ {function_result.get('message', 'Operation failed.')}"
+                    error_msg = f"❌ {function_result.get('message', 'Operation failed.')}"
+                    
+                    # Add helpful context if available
+                    context = function_result.get('context', {})
+                    if context.get('available_products'):
+                        error_msg += f"\n\n💡 Try checking these available products and their IDs for reference."
+                    
+                    return error_msg
             
             return f"Operation completed. Result: {json.dumps(function_result, indent=2)}"
+
+
+    def _build_conversation_history(self, user_message: str, context: Dict[str, Any]) -> List[Dict[str, str]]:
+        """Build conversation history for OpenAI with enhanced context"""
+        messages = [
+            {"role": "system", "content": self.system_prompt}
+        ]
+        
+        # Enhanced context message
+        context_msg = f"""CURRENT USER CONTEXT:
+    - User Type: {context['user_type']}
+    - Business ID: {context['business_id']} (if vendor)
+    - Messages in session: {context['conversation_count']}
+
+    DATABASE STATUS: ✅ JSON database is connected and operational
+
+    CRITICAL REMINDER: 
+    - NEVER assume or make up product details
+    - Always ask for complete information before adding products
+    - When products aren't found, use available context to suggest alternatives
+    - Always show Product IDs prominently for easy reference
+    - Help users find the right products using available data"""
+        
+        messages.append({"role": "system", "content": context_msg})
+        
+        # Get recent conversation history
+        history = cl.user_session.get("conversation_history", [])
+        for exchange in history[-5:]:  # Last 5 exchanges
+            messages.append({"role": "user", "content": exchange.get("user_message", "")})
+            messages.append({"role": "assistant", "content": exchange.get("ai_response", "")})
+        
+        # Add current message
+        messages.append({"role": "user", "content": user_message})
+        
+        return messages
 
     def _store_conversation(self, user_message: str, ai_response: str):
         """Store conversation in session"""

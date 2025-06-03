@@ -281,50 +281,39 @@ def suggest_product_details(partial_name: str) -> Dict[str, Any]:
     return suggestions
 
 
+# Updated functions for realtime/vendor_tools.py
+
 def update_product_handler(business_id: str, product_identifier: str, 
                           **updates) -> Dict[str, Any]:
     """
-    Update an existing product with enhanced validation
+    Update an existing product with enhanced validation and LLM-friendly error responses
     """
     try:
-        # Find the product by ID or name
-        product = None
+        # Enhanced product validation with full context
+        validation_result = db.validate_product_reference(product_identifier, business_id)
         
-        # Try finding by ID first
-        if product_identifier.isdigit():
-            product = db.get_product_by_id(product_identifier)
-        
-        # If not found by ID, try by name
-        if not product:
-            product = db.find_product_by_name(product_identifier, business_id)
-        
-        if not product:
-            # Get all products for suggestions
-            all_products = db.get_products_by_business(business_id)
-            product_names = [p.get('name', '') for p in all_products[:5]]
-            
-            suggestion_msg = ""
-            if product_names:
-                suggestion_msg = f"\n\nAvailable products:\n" + "\n".join(f"• {name}" for name in product_names)
+        if not validation_result["exists"]:
+            # Return rich context for LLM processing
+            context = validation_result["context"]
             
             return {
                 "success": False,
-                "message": f"Product '{product_identifier}' not found.{suggestion_msg}",
+                "message": f"Product '{product_identifier}' not found",
                 "error_type": "product_not_found",
-                "available_products": product_names,
+                "context": {
+                    "user_input": product_identifier,
+                    "available_products": context["all_products"],
+                    "business_name": context["business_name"],
+                    "total_products": context["total_count"],
+                    "suggestion_prompt": f"User wants to update '{product_identifier}' but it doesn't exist. Help them find the right product from the available list.",
+                    "quick_reference": db.get_product_quick_reference(business_id)
+                },
                 "data": None
             }
         
-        # Check if product belongs to the business
-        if product.get('business_id') != business_id:
-            return {
-                "success": False,
-                "message": "You can only update products from your own business",
-                "error_type": "permission_denied",
-                "data": None
-            }
+        product = validation_result["product"]
         
-        # Validate updates
+        # Validate updates (existing logic remains the same)
         valid_updates = {}
         validation_errors = []
         
@@ -365,9 +354,14 @@ def update_product_handler(business_id: str, product_identifier: str,
         if validation_errors:
             return {
                 "success": False,
-                "message": "Validation errors:\n" + "\n".join(f"• {error}" for error in validation_errors),
+                "message": "Validation errors",
                 "error_type": "validation_error",
                 "validation_errors": validation_errors,
+                "context": {
+                    "product_found": product,
+                    "attempted_updates": updates,
+                    "suggestion_prompt": "Help user fix these validation errors and retry the update."
+                },
                 "data": None
             }
         
@@ -376,6 +370,10 @@ def update_product_handler(business_id: str, product_identifier: str,
                 "success": False,
                 "message": "No valid updates provided",
                 "error_type": "no_updates",
+                "context": {
+                    "current_product": product,
+                    "suggestion_prompt": "User didn't provide any valid updates. Show them the current product details and ask what they want to change."
+                },
                 "data": product
             }
         
@@ -386,7 +384,7 @@ def update_product_handler(business_id: str, product_identifier: str,
             # Get updated product
             updated_product = db.get_product_by_id(product['id'])
             
-            # Create detailed update message
+            # Create detailed update message with prominent ID
             update_details = []
             for field, value in valid_updates.items():
                 if field == 'price':
@@ -394,7 +392,9 @@ def update_product_handler(business_id: str, product_identifier: str,
                 else:
                     update_details.append(f"• {field.title()}: {value}")
             
-            message = f"✅ Product '{product['name']}' updated successfully!\n\nChanges made:\n" + "\n".join(update_details)
+            message = f"✅ Product updated successfully!\n\n"
+            message += db.format_product_display(updated_product)
+            message += f"\n\nChanges made:\n" + "\n".join(update_details)
             
             return {
                 "success": True,
@@ -407,6 +407,11 @@ def update_product_handler(business_id: str, product_identifier: str,
                 "success": False,
                 "message": "Failed to update product in database",
                 "error_type": "database_error",
+                "context": {
+                    "product": product,
+                    "attempted_updates": valid_updates,
+                    "suggestion_prompt": "Database update failed. Suggest user to try again."
+                },
                 "data": None
             }
             
@@ -415,6 +420,11 @@ def update_product_handler(business_id: str, product_identifier: str,
             "success": False,
             "message": f"Error updating product: {str(e)}",
             "error_type": "system_error",
+            "context": {
+                "user_input": product_identifier,
+                "error_details": str(e),
+                "suggestion_prompt": "System error occurred. Suggest user to try again or contact support."
+            },
             "data": None
         }
 
@@ -424,42 +434,29 @@ def delete_product_handler(business_id: str, product_identifier: str) -> Dict[st
     Delete a product from inventory with enhanced validation and safety checks
     """
     try:
-        # Find the product by ID or name
-        product = None
+        # Enhanced product validation with full context
+        validation_result = db.validate_product_reference(product_identifier, business_id)
         
-        # Try finding by ID first
-        if product_identifier.isdigit():
-            product = db.get_product_by_id(product_identifier)
-        
-        # If not found by ID, try by name
-        if not product:
-            product = db.find_product_by_name(product_identifier, business_id)
-        
-        if not product:
-            # Get all products for suggestions
-            all_products = db.get_products_by_business(business_id)
-            product_names = [p.get('name', '') for p in all_products[:5]]
-            
-            suggestion_msg = ""
-            if product_names:
-                suggestion_msg = f"\n\nAvailable products:\n" + "\n".join(f"• {name} (ID: {p.get('id')})" for p in all_products[:5])
+        if not validation_result["exists"]:
+            # Return rich context for LLM processing
+            context = validation_result["context"]
             
             return {
                 "success": False,
-                "message": f"Product '{product_identifier}' not found.{suggestion_msg}",
+                "message": f"Product '{product_identifier}' not found",
                 "error_type": "product_not_found",
-                "available_products": product_names,
+                "context": {
+                    "user_input": product_identifier,
+                    "available_products": context["all_products"],
+                    "business_name": context["business_name"],
+                    "total_products": context["total_count"],
+                    "suggestion_prompt": f"User wants to delete '{product_identifier}' but it doesn't exist. Help them find the right product from the available list.",
+                    "quick_reference": db.get_product_quick_reference(business_id)
+                },
                 "data": None
             }
         
-        # Check if product belongs to the business
-        if product.get('business_id') != business_id:
-            return {
-                "success": False,
-                "message": "You can only delete products from your own business",
-                "error_type": "permission_denied",
-                "data": None
-            }
+        product = validation_result["product"]
         
         # Safety check - warn if product has high value or stock
         warnings = []
@@ -478,16 +475,13 @@ def delete_product_handler(business_id: str, product_identifier: str) -> Dict[st
         success = db.delete_product(product['id'])
         
         if success:
-            message = f"✅ Product '{product['name']}' deleted successfully"
+            message = f"✅ Product deleted successfully!\n\n"
+            message += f"**Deleted Product:**\n{db.format_product_display(deleted_product)}"
             
             if warnings:
-                message += f"\n\n⚠️ Note: This product had:\n" + "\n".join(f"• {warning}" for warning in warnings)
+                message += f"\n\n⚠️ **Note:** This product had:\n" + "\n".join(f"• {warning}" for warning in warnings)
             
-            message += f"\n\n📋 Deleted Product Details:\n"
-            message += f"• ID: {deleted_product.get('id')}\n"
-            message += f"• Price: KSh {deleted_product.get('price', 0):,}\n"
-            message += f"• Stock: {deleted_product.get('stock', 0)} units\n"
-            message += f"• Total Value: KSh {product_value:,}"
+            message += f"\n\n💰 **Total Value Removed:** KSh {product_value:,}"
             
             return {
                 "success": True,
@@ -500,6 +494,10 @@ def delete_product_handler(business_id: str, product_identifier: str) -> Dict[st
                 "success": False,
                 "message": "Failed to delete product from database",
                 "error_type": "database_error",
+                "context": {
+                    "product": product,
+                    "suggestion_prompt": "Database deletion failed. Suggest user to try again."
+                },
                 "data": None
             }
             
@@ -508,6 +506,11 @@ def delete_product_handler(business_id: str, product_identifier: str) -> Dict[st
             "success": False,
             "message": f"Error deleting product: {str(e)}",
             "error_type": "system_error",
+            "context": {
+                "user_input": product_identifier,
+                "error_details": str(e),
+                "suggestion_prompt": "System error occurred. Suggest user to try again or contact support."
+            },
             "data": None
         }
 
@@ -515,7 +518,7 @@ def delete_product_handler(business_id: str, product_identifier: str) -> Dict[st
 def show_products_handler(business_id: str, category: str = None, 
                          search_term: str = None) -> Dict[str, Any]:
     """
-    Display products for a business with enhanced formatting and information
+    Display products for a business with enhanced formatting and prominent IDs
     """
     try:
         # Validate business exists
@@ -534,7 +537,7 @@ def show_products_handler(business_id: str, category: str = None,
         if not products:
             return {
                 "success": True,
-                "message": f"No products found for {business['name']}.\n\n💡 Try adding some products to get started!",
+                "message": f"No products found for {business['name']}.\n\n💡 Try adding some products to get started!\n\nUse: 'Add product [name] [price] [stock] [category] [description] [brand] [warranty]'",
                 "data": {
                     "business": business,
                     "products": [],
@@ -551,7 +554,11 @@ def show_products_handler(business_id: str, category: str = None,
                 available_categories = list(set(p.get('category', 'Unknown') for p in db.get_products_by_business(business_id)))
                 return {
                     "success": True,
-                    "message": f"No products found in category '{category}'.\n\nAvailable categories: {', '.join(available_categories)}",
+                    "message": f"No products found in category '{category}'.\n\n**Available categories:** {', '.join(available_categories)}",
+                    "context": {
+                        "available_categories": available_categories,
+                        "suggestion_prompt": f"User searched for category '{category}' but none found. Show available categories."
+                    },
                     "data": {
                         "business": business,
                         "products": [],
@@ -573,9 +580,17 @@ def show_products_handler(business_id: str, category: str = None,
             ]
             
             if len(products) == 0:
+                # Get context for LLM to suggest alternatives
+                context = db.get_contextual_product_info(business_id, search_term)
+                
                 return {
                     "success": True,
-                    "message": f"No products found matching '{search_term}'.\n\n💡 Try different keywords or browse all products.",
+                    "message": f"No products found matching '{search_term}'",
+                    "context": {
+                        "search_term": search_term,
+                        "available_products": context["all_products"],
+                        "suggestion_prompt": f"User searched for '{search_term}' but no matches found. Help them find similar products."
+                    },
                     "data": {
                         "business": business,
                         "products": [],
@@ -594,12 +609,21 @@ def show_products_handler(business_id: str, category: str = None,
         # Sort products by name
         products.sort(key=lambda x: x.get('name', '').lower())
         
+        # Format products with prominent IDs
+        formatted_products = []
+        for product in products:
+            formatted_products.append({
+                "display": db.format_product_display(product),
+                "data": product
+            })
+        
         return {
             "success": True,
-            "message": f"Found {total_products} products for {business['name']}",
+            "message": f"📋 **{business['name']} - Product Inventory**\n\nFound {total_products} products",
             "data": {
                 "business": business,
                 "products": products,
+                "formatted_products": formatted_products,
                 "total_products": total_products,
                 "total_value": total_value,
                 "low_stock_count": low_stock_count,
@@ -612,7 +636,8 @@ def show_products_handler(business_id: str, category: str = None,
                     "total_inventory_value": total_value,
                     "average_product_price": sum(p.get('price', 0) for p in products) / len(products) if products else 0,
                     "total_stock_units": sum(p.get('stock', 0) for p in products)
-                }
+                },
+                "quick_reference": db.get_product_quick_reference(business_id)
             }
         }
         
@@ -621,9 +646,12 @@ def show_products_handler(business_id: str, category: str = None,
             "success": False,
             "message": f"Error retrieving products: {str(e)}",
             "error_type": "system_error",
+            "context": {
+                "error_details": str(e),
+                "suggestion_prompt": "System error occurred while fetching products. Suggest user to try again."
+            },
             "data": None
         }
-
 
 # Rest of the functions remain the same...
 def update_stock_handler(business_id: str, product_identifier: str, 
