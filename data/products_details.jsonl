@@ -1,0 +1,155 @@
+[
+    {
+      "name": "Bubba Hero Stainless Steel Travel Mug - Black Licorice, 18 fl oz",
+      "description": "Durable stainless steel mug with vacuum insulation to keep beverages hot or cold for hours. Ideal for commuters and adventurers.",
+      "image": "bubba_hero_black_18oz.png",
+      "price": 14.99,
+      "color": "black",
+      "stock_quantity": 25
+    },
+    {
+      "name": "Contigo Byron 2.0 Stainless Steel Travel Mug with SNAPSEAL",
+      "description": "Features SNAPSEAL lid and THERMALOCK insulation, keeping drinks hot for 7 hours or cold for 18. Spill-proof and ergonomic design.",
+      "image": "contigo_byron_snapseal.png",
+      "price": 18.49,
+      "color": "green",
+      "stock_quantity": 30
+    },
+    {
+      "name": "Contigo Snack Hero 2-in-1 Bottle Set - Blue",
+      "description": "Dual-compartment kids' bottle: 13 oz water bottle and 4 oz snack container. Leak-proof, BPA-free, easy-carry handle.",
+      "image": "contigo_snack_hero_blue.png",
+      "price": 12.75,
+      "color": "blue",
+      "stock_quantity": 40
+    },
+    {
+      "name": "Klean Kanteen Kid Classic 12oz Stainless Steel Bottle",
+      "description": "Eco-friendly stainless steel kids bottle with spill-proof sport cap. Designed for small hands and active lifestyles.",
+      "image": "klean_kanteen_kid_12oz.png",
+      "price": 16.99,
+      "color": "silver",
+      "stock_quantity": 20
+    },
+    {
+      "name": "Pink Thermo Flask",
+      "description": "Chic and compact vacuum-insulated pink flask that keeps your drinks at the perfect temperature all day.",
+      "image": "pink_thermo_flask.png",
+      "price": 13.99,
+      "color": "pink",
+      "stock_quantity": 35
+    },
+    {
+      "name": "Corkcicle Canteen Classic Collection - Triple Insulated",
+      "description": "Stylish and rugged triple-insulated canteen keeps drinks cold for 25 hours or hot for 12. Shatterproof stainless steel.",
+      "image": "corkcicle_canteen_classic.png",
+      "price": 24.95,
+      "color": "orange",
+      "stock_quantity": 18
+    },
+    {
+      "name": "Simple Modern Thermo Flask",
+      "description": "Minimalist design with double-wall insulation. Keeps beverages cold for 24 hours or hot for 12.",
+      "image": "simple_modern_thermo.png",
+      "price": 15.99,
+      "color": "silver",
+      "stock_quantity": 40
+    },
+    {
+      "name": "Red Thermo Bottle",
+      "description": "Sleek red stainless steel thermal bottle perfect for keeping drinks at just the right temperature on the go.",
+      "image": "red_thermo_bottle.png",
+      "price": 14.99,
+      "color": "red",
+      "stock_quantity": 28
+    },
+    {
+      "name": "SM Thermo Bottle",
+      "description": "Durable and spill-resistant bottle designed for outdoor use and gym workouts. Insulated to retain heat and cold.",
+      "image": "sm_thermo_bottle.png",
+      "price": 12.75,
+      "color": "baby pink",
+      "stock_quantity": 40
+    },
+    {
+      "name": "Orca Insulated Thermo Bottle",
+      "description": "Tough and reliable bottle with premium insulation for outdoor use. Keeps drinks fresh all day.",
+      "image": "orca_insulated_bottle.png",
+      "price": 19.99,
+      "color": "black",
+      "stock_quantity": 22
+    },
+    {
+      "name": "Copper Vacuum Insulated Bottle, 750ml",
+      "description": "High-capacity, vacuum-insulated copper bottle. Maintains drink temperature with leak-proof performance.",
+      "image": "copper_vacuum_750ml.png",
+      "price": 18.49,
+      "color": "blue",
+      "stock_quantity": 30
+    },
+    {
+      "name": "Contigo SNAPSEAL Thermo Bottle",
+      "description": "SNAPSEAL lid for easy, one-handed operation. THERMALOCK insulation keeps drinks hot or cold for hours.",
+      "image": "contigo_snapseal_thermo.png",
+      "price": 17.75,
+      "color": "silver",
+      "stock_quantity": 32
+    },
+    {
+      "name": "TAL Ranger Thermo Bottle - Navy Blue",
+      "description": "Rugged and large-capacity bottle with double-wall insulation. Perfect for hiking and long trips.",
+      "image": "tal_ranger_navy.png",
+      "price": 21.99,
+      "color": "navy blue",
+      "stock_quantity": 15
+    },
+    {
+      "name": "Starbucks Lime Green Stainless Steel Tumbler - 12oz",
+      "description": "Trendy two-tone tumbler from Starbucks. Stainless steel body with secure lid, perfect for on-the-go coffee.",
+      "image": "starbucks_green_tumbler.png",
+      "price": 19.95,
+      "color": "black",
+      "stock_quantity": 27
+    },
+    {
+      "name": "Contigo Thermalock Vacuum Insulation Bottle",
+      "description": "Reliable thermal bottle with vacuum insulation and leak-proof design for everyday travel.",
+      "image": "contigo_thermalock_bottle.png",
+      "price": 18.49,
+      "color": "black",
+      "stock_quantity": 30
+    },
+    {
+      "name": "Hot and Cold Thermo Cup",
+      "description": "Versatile thermo cup suitable for both hot and cold beverages. Compact and spill-proof.",
+      "image": "hot_cold_thermo_cup.png",
+      "price": 12.75,
+      "color": "silver",
+      "stock_quantity": 40
+    },
+    {
+      "name": "Hydrapeak Sport Water Bottle with Straw Lid",
+      "description": "Double-wall insulated sport bottle with a straw lid. Designed for athletes and gym-goers.",
+      "image": "hydrapeak_sport_straw.png",
+      "price": 16.50,
+      "color": "pink",
+      "stock_quantity": 36
+    },
+    {
+      "name": "Tylt Bottle 2.0 - Power Bank + Wireless Charger",
+      "description": "Revolutionary 3-in-1 bottle with built-in power bank and wireless charging capability. Hydration meets innovation.",
+      "image": "tylt_2in1_power_bottle.png",
+      "price": 39.99,
+      "color": "black",
+      "stock_quantity": 12
+    },
+    {
+      "name": "Stanley 16oz Stainless Steel Insulated Pint",
+      "description": "Iconic Stanley pint glass with bottle opener. Double-wall insulation perfect for cold beers on the go.",
+      "image": "stanley_beer_pint.png",
+      "price": 22.00,
+      "color": "red",
+      "stock_quantity": 20
+    }
+  ]
+  
