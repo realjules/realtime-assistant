@@ -9,5 +9,8 @@ python-dotenv
 requests
 
 # For WhatsApp integration
-# flask
-# gunicorn
+python-dotenv
+flask
+requests
+python-dotenv
+pyngrok
