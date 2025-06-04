@@ -1,44 +1,42 @@
 """
-Fixed WhatsApp Flow Integration
-Uses existing Sasabot components with minimal changes
+Simplified WhatsApp Flow - Fixes Chainlit context error
+Uses OpenAI directly instead of trying to mock Chainlit
 """
 
 import os
 import requests
-import asyncio
+import json
 from flask import Flask, Blueprint, request
 from datetime import datetime, timezone
 from dotenv import load_dotenv
+from openai import AsyncOpenAI
 
 # Load environment variables
 load_dotenv()
 
-# Import your existing components
-from utils.simple_db import db
-from realtime.assistant import SasabotAssistant
-
-# WhatsApp Configuration from your .env
+# WhatsApp Configuration
 ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN") or os.getenv("WHATSAPP_TOKEN")
 VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN") or os.getenv("VERIFY_TOKEN")
 WHATSAPP_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID") or os.getenv("WHATSAPP_ID")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Initialize your existing assistant
-assistant = SasabotAssistant()
+# Initialize OpenAI client
+client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
-# Store WhatsApp sessions (using your phone number as key)
-whatsapp_sessions = {}
-
-# Phone to business mapping (simple approach)
+# Phone mappings
 PHONE_TO_BUSINESS = {
-    "+254712345678": {"business_id": "mama_jane_electronics", "role": "vendor", "name": "Jane"},
+    "+254762222000": {"business_id": "mama_jane_electronics", "role": "vendor", "name": "Jane"},
     # Add more mappings as needed
 }
+
+# Session storage
+whatsapp_sessions = {}
 
 app = Flask(__name__)
 webhook_bp = Blueprint('webhook', __name__)
 
 def normalize_phone(phone: str) -> str:
-    """Normalize phone number to +254 format"""
+    """Normalize phone number"""
     phone = phone.replace(" ", "").replace("-", "")
     if phone.startswith("07") or phone.startswith("01"):
         phone = "+254" + phone[1:]
@@ -49,145 +47,153 @@ def normalize_phone(phone: str) -> str:
     return phone
 
 def get_business_context(phone: str):
-    """Get business context for phone number"""
+    """Get business context for phone"""
     phone = normalize_phone(phone)
-    mapping = PHONE_TO_BUSINESS.get(phone, {
-        "business_id": "mama_jane_electronics",  # Default business
+    return PHONE_TO_BUSINESS.get(phone, {
+        "business_id": "mama_jane_electronics",
         "role": "customer", 
         "name": "Customer"
     })
-    return mapping
 
-def create_mock_session(phone: str):
-    """Create mock Chainlit session for WhatsApp user"""
-    context = get_business_context(phone)
-    
-    session = {
-        "user_type": context["role"],
-        "business_id": context["business_id"], 
-        "message_count": 0,
-        "conversation_history": [],
-        "start_time": datetime.now(),
-        "phone": phone
-    }
-    
-    whatsapp_sessions[phone] = session
-    return session
-
-def get_session(phone: str):
-    """Get or create session for phone number"""
-    phone = normalize_phone(phone)
-    if phone not in whatsapp_sessions:
-        return create_mock_session(phone)
-    return whatsapp_sessions[phone]
-
-class MockChainlitSession:
-    """Mock Chainlit user session for WhatsApp"""
-    def __init__(self, session_data):
-        self.data = session_data
-    
-    def get(self, key, default=None):
-        return self.data.get(key, default)
-    
-    def set(self, key, value):
-        self.data[key] = value
-
-async def process_whatsapp_message(phone: str, message: str) -> str:
-    """Process message using your existing assistant"""
+def load_business_data(business_id: str = "mama_jane_electronics"):
+    """Load business data from your existing JSON files"""
     try:
-        # Get WhatsApp session
-        session = get_session(phone)
+        # Load from your existing data files
+        data_dir = "data"
         
-        # Create mock Chainlit context
-        mock_session = MockChainlitSession(session)
+        business_info = {}
+        products = []
         
-        # Temporarily monkey-patch chainlit for your assistant
-        import sys
-        import types
+        # Try to load businesses
+        businesses_file = os.path.join(data_dir, "businesses.json")
+        if os.path.exists(businesses_file):
+            with open(businesses_file, 'r') as f:
+                businesses = json.load(f)
+                business_info = businesses.get(business_id, {})
         
-        # Create mock chainlit module
-        mock_cl = types.ModuleType('chainlit')
-        mock_cl.user_session = mock_session
+        # Try to load products
+        products_file = os.path.join(data_dir, "products.json")
+        if os.path.exists(products_file):
+            with open(products_file, 'r') as f:
+                all_products = json.load(f)
+                products = [p for p in all_products if p.get("business_id") == business_id]
         
-        # Store original and replace
-        original_cl = sys.modules.get('chainlit')
-        sys.modules['chainlit'] = mock_cl
+        return {
+            "business": business_info,
+            "products": products
+        }
+    except Exception as e:
+        print(f"Error loading business data: {e}")
+        return {"business": {}, "products": []}
+
+async def process_message_with_openai(message: str, phone: str) -> str:
+    """Process message using OpenAI directly (bypassing Chainlit context)"""
+    try:
+        # Get business context
+        context = get_business_context(phone)
+        business_data = load_business_data(context["business_id"])
         
-        try:
-            # Use your existing assistant
-            response = await assistant.process_message(message)
-            
-            # Update session
-            session["message_count"] = session.get("message_count", 0) + 1
-            
-            # Add to conversation history
-            if "conversation_history" not in session:
-                session["conversation_history"] = []
-            
-            session["conversation_history"].append({
-                "timestamp": datetime.now().isoformat(),
-                "user_message": message,
-                "ai_response": response
-            })
-            
-            # Keep last 10 exchanges
-            if len(session["conversation_history"]) > 10:
-                session["conversation_history"] = session["conversation_history"][-10:]
-            
-            # Save session
-            whatsapp_sessions[phone] = session
-            
-            return response
-            
-        finally:
-            # Restore original chainlit
-            if original_cl:
-                sys.modules['chainlit'] = original_cl
-            elif 'chainlit' in sys.modules:
-                del sys.modules['chainlit']
-                
+        # Get or create session
+        phone = normalize_phone(phone)
+        if phone not in whatsapp_sessions:
+            whatsapp_sessions[phone] = {
+                "conversation_history": [],
+                "user_role": context["role"],
+                "business_id": context["business_id"]
+            }
+        
+        session = whatsapp_sessions[phone]
+        
+        # Build system prompt
+        if context["role"] == "vendor":
+            system_prompt = f"""
+You are Sasabot, an AI assistant for {context['name']}'s business ({context['business_id']}).
+
+You help vendors manage their business:
+- Track inventory and products
+- Process orders and sales
+- Answer customer questions
+- Provide business insights
+
+Business Info: {json.dumps(business_data['business'], indent=2)}
+Products: {json.dumps(business_data['products'], indent=2)}
+
+Keep responses concise for WhatsApp (under 300 words).
+"""
+        else:
+            system_prompt = f"""
+You are Sasabot, a helpful shopping assistant for Mama Jane Electronics.
+
+You help customers:
+- Find products they need
+- Get product information and prices
+- Place orders
+- Track deliveries
+
+Available Products: {json.dumps(business_data['products'], indent=2)}
+
+Keep responses friendly and concise for WhatsApp (under 300 words).
+Be helpful in finding the right products for customers.
+"""
+        
+        # Build conversation history
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        # Add recent conversation history
+        for msg in session["conversation_history"][-5:]:  # Last 5 exchanges
+            messages.append({"role": "user", "content": msg["user_message"]})
+            messages.append({"role": "assistant", "content": msg["ai_response"]})
+        
+        # Add current message
+        messages.append({"role": "user", "content": message})
+        
+        # Call OpenAI
+        response = await client.chat.completions.create(
+            model="gpt-4",
+            messages=messages,
+            max_tokens=500,
+            temperature=0.7
+        )
+        
+        ai_response = response.choices[0].message.content
+        
+        # Save to conversation history
+        session["conversation_history"].append({
+            "timestamp": datetime.now().isoformat(),
+            "user_message": message,
+            "ai_response": ai_response
+        })
+        
+        # Keep only last 10 exchanges
+        if len(session["conversation_history"]) > 10:
+            session["conversation_history"] = session["conversation_history"][-10:]
+        
+        whatsapp_sessions[phone] = session
+        
+        return ai_response
+        
     except Exception as e:
         print(f"Error processing message: {e}")
-        return f"Sorry, I encountered an error: {str(e)}"
+        return f"Sorry, I encountered an error processing your message. Please try again."
 
-def format_for_whatsapp(text: str) -> str:
-    """Format response for WhatsApp (4000 char limit)"""
-    # Replace markdown with simple formatting
-    formatted = text.replace("**", "*")  # Bold
-    formatted = formatted.replace("##", "")  # Headers
-    formatted = formatted.replace("###", "")
-    
-    # Truncate if too long
-    if len(formatted) > 4000:
-        formatted = formatted[:3900] + "\n\n... (message truncated)"
-    
-    return formatted
-
-def save_customer_interaction(customer_id: str, message: str, timestamp: datetime):
-    """Save interaction to your existing database"""
+def save_interaction(phone: str, message: str):
+    """Save customer interaction"""
     try:
-        # Use your existing database to save interactions
-        # You can extend simple_db.py or just save to a simple file
         interactions_file = "data/whatsapp_interactions.json"
-        
-        # Create data directory if it doesn't exist
         os.makedirs("data", exist_ok=True)
         
-        # Load existing interactions
         interactions = []
         if os.path.exists(interactions_file):
-            import json
             try:
                 with open(interactions_file, 'r') as f:
                     interactions = json.load(f)
             except:
                 interactions = []
         
-        # Add new interaction
         interactions.append({
-            "phone": normalize_phone(customer_id),
+            "phone": normalize_phone(phone),
             "message": message,
-            "timestamp": timestamp.isoformat(),
+            "timestamp": datetime.now().isoformat(),
             "platform": "whatsapp"
         })
         
@@ -195,8 +201,6 @@ def save_customer_interaction(customer_id: str, message: str, timestamp: datetim
         if len(interactions) > 1000:
             interactions = interactions[-1000:]
         
-        # Save back
-        import json
         with open(interactions_file, 'w') as f:
             json.dump(interactions, f, indent=2)
             
@@ -206,6 +210,10 @@ def save_customer_interaction(customer_id: str, message: str, timestamp: datetim
 def send_message(customer_id: str, text: str):
     """Send message to WhatsApp"""
     try:
+        # Format for WhatsApp (4000 char limit)
+        if len(text) > 4000:
+            text = text[:3900] + "\n\n... (message truncated)"
+        
         url = f"https://graph.facebook.com/v19.0/{WHATSAPP_ID}/messages"
         headers = {
             "Authorization": f"Bearer {ACCESS_TOKEN}",
@@ -219,10 +227,16 @@ def send_message(customer_id: str, text: str):
         }
         
         response = requests.post(url, headers=headers, json=payload)
-        print(f"Message sent: {response.status_code} - {response.text}")
+        print(f"📤 Message sent: {response.status_code}")
+        
+        if response.status_code != 200:
+            print(f"❌ Send error: {response.text}")
+        
+        return response.status_code == 200
         
     except Exception as e:
-        print(f"Error sending message: {e}")
+        print(f"❌ Error sending message: {e}")
+        return False
 
 @webhook_bp.route('/webhook', methods=['GET', 'POST'])
 def webhook():
@@ -231,6 +245,8 @@ def webhook():
         mode = request.args.get('hub.mode')
         token = request.args.get('hub.verify_token') 
         challenge = request.args.get('hub.challenge')
+        
+        print(f"🔐 Verification: mode={mode}, token={token}")
         
         if mode == 'subscribe' and token == VERIFY_TOKEN:
             print("✅ Webhook verified!")
@@ -242,7 +258,7 @@ def webhook():
     if request.method == 'POST':
         try:
             data = request.json
-            print(f"📨 Webhook data: {data}")
+            print(f"📨 Webhook data: {json.dumps(data, indent=2)}")
             
             # Extract messages
             if data and 'entry' in data:
@@ -258,35 +274,46 @@ def webhook():
                                 if 'text' in message:
                                     customer_phone = message['from']
                                     message_body = message['text']['body']
-                                    timestamp = datetime.now(timezone.utc)
                                     
-                                    print(f"📱 Message from {customer_phone}: {message_body}")
+                                    print(f"📱 Processing: {customer_phone} -> {message_body}")
                                     
                                     # Save interaction
-                                    save_customer_interaction(customer_phone, message_body, timestamp)
+                                    save_interaction(customer_phone, message_body)
                                     
-                                    # Process with your assistant (run async in thread)
+                                    # Process with OpenAI (run async)
+                                    import asyncio
+                                    
                                     def run_async():
                                         loop = asyncio.new_event_loop()
                                         asyncio.set_event_loop(loop)
                                         return loop.run_until_complete(
-                                            process_whatsapp_message(customer_phone, message_body)
+                                            process_message_with_openai(message_body, customer_phone)
                                         )
                                     
-                                    response_text = run_async()
-                                    
-                                    # Format for WhatsApp
-                                    formatted_response = format_for_whatsapp(response_text)
-                                    
-                                    # Send response
-                                    send_message(customer_phone, formatted_response)
-                                    
-                                    print(f"✅ Processed message from {customer_phone}")
+                                    try:
+                                        response_text = run_async()
+                                        print(f"🤖 AI Response: {response_text}")
+                                        
+                                        # Send response
+                                        success = send_message(customer_phone, response_text)
+                                        
+                                        if success:
+                                            print(f"✅ Response sent to {customer_phone}")
+                                        else:
+                                            print(f"❌ Failed to send to {customer_phone}")
+                                            
+                                    except Exception as e:
+                                        print(f"❌ Error processing: {e}")
+                                        # Send error message
+                                        send_message(customer_phone, "Sorry, I'm having trouble right now. Please try again in a moment.")
+                                
+                                else:
+                                    print(f"📎 Non-text message: {message.get('type', 'unknown')}")
             
             return "OK", 200
             
         except Exception as e:
-            print(f"❌ Error processing webhook: {e}")
+            print(f"❌ Webhook error: {e}")
             return "Error", 500
 
 # Register blueprint
@@ -297,32 +324,24 @@ def health():
     """Health check"""
     return {
         "status": "healthy",
-        "service": "Sasabot WhatsApp", 
-        "timestamp": datetime.now().isoformat()
+        "service": "Sasabot WhatsApp",
+        "timestamp": datetime.now().isoformat(),
+        "sessions_count": len(whatsapp_sessions)
     }
 
-@app.route('/test')
-def test():
-    """Test endpoint"""
+@app.route('/sessions')
+def sessions():
+    """View current sessions (for debugging)"""
     return {
-        "message": "WhatsApp webhook is running!",
-        "webhook_url": "/webhook",
-        "verify_token": VERIFY_TOKEN[:5] + "..." if VERIFY_TOKEN else "NOT SET"
+        "sessions": whatsapp_sessions,
+        "count": len(whatsapp_sessions)
     }
 
 if __name__ == "__main__":
-    print("🚀 Starting Sasabot WhatsApp Integration...")
+    print("🚀 Starting Simplified Sasabot WhatsApp...")
     print(f"📱 WhatsApp ID: {WHATSAPP_ID}")
     print(f"🔐 Verify Token: {VERIFY_TOKEN}")
-    print(f"🔗 Webhook: /webhook")
-    print(f"❤️ Health: /health") 
+    print(f"🤖 OpenAI: {'✅' if OPENAI_API_KEY else '❌'}")
     print("="*50)
-    
-    # Check environment
-    if not all([ACCESS_TOKEN, VERIFY_TOKEN, WHATSAPP_ID]):
-        print("❌ Missing environment variables!")
-        print("Please check your .env file")
-    else:
-        print("✅ Environment variables loaded")
     
     app.run(host='0.0.0.0', port=8080, debug=True)

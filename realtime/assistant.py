@@ -198,7 +198,6 @@ The system works with real JSON files that persist data between sessions."""
                     "required": ["business_id", "name", "price", "stock", "category", "description", "brand", "warranty"]
                 }
             },
-            # ... rest of the functions remain the same
             {
                 "name": "show_products",
                 "description": "Display products for a business (vendors) or browse all products",
