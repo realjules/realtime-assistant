@@ -5,8 +5,7 @@ __pycache__
 .chainlit
 .env
 .files
-backups\
-
+backups/
 
 # make dev
 # make logs

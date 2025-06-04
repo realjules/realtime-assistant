@@ -3,15 +3,10 @@ DONE 2. there is an issue with how the agent is referrign to products (e.g: wher
 DONE: 4. the bot should introduce itself as a bot (to avoid being banned)
 DONE 8. dockerelizing the system (apis)
 
-
-
-
-
 6. Integrate with WhatsApp
 7. Look into deploying and cloud
 8. Basic business metrics/stats
 9. Search by picture using YOLO
-
 
 
 5. the welcome message should have name of the business (i.e welcome to Jules's Store, I am sasabot AI assistant ready to help with you need, and {list all services} how can i help you)
