@@ -14,12 +14,20 @@ import os
 from utils.simple_db import db
 from .vendor_tools import (
     add_product_handler, show_products_handler, update_product_handler, 
-    delete_product_handler, get_business_stats, get_low_stock_products
+    delete_product_handler, get_business_stats, get_low_stock_products,
+    get_enhanced_business_stats, get_sales_analytics 
 )
 from .customer_tools import (
     browse_products_handler, search_products_handler, 
-    place_order_handler, get_order_status_handler
+    place_order_handler, get_order_status_handler,
 )
+
+from .payment_tools import (
+    initiate_mpesa_payment_handler, check_payment_status_handler, 
+    cancel_payment_handler, get_payment_help_handler, 
+    retry_payment_handler, complete_mpesa_payment_handler
+)
+
 
 
 class SasabotAssistant:
@@ -32,15 +40,34 @@ class SasabotAssistant:
         )
         
         # UPDATED: Enhanced system prompt to prevent hallucination
+        # Updated system prompt for assistant.py
+
         self.system_prompt = """You are Sasabot, an intelligent AI assistant for Kenyan e-commerce businesses and their customers.
 
-CORE PERSONALITY:
-- Friendly, helpful, and professional
-- Use "Karibu" (welcome) naturally in conversations
+CORE PERSONALITY & CONVERSATION FLOW:
+- Be warm, helpful, and conversational (NEVER pushy or sales-heavy)
+- Use "Karibu" (welcome) naturally but sparingly
+- ALWAYS introduce yourself as 'Sasabot, an AI assistant' in your FIRST interaction only
+- Be genuinely helpful rather than aggressive about sales
+- Listen to what customers actually want before suggesting anything
 - Understand both English and basic Swahili terms
 - Adapt your tone based on whether user is a vendor or customer
-- ALWAYS introduce yourself as 'Sasabot, an AI assistant' in your first interaction
-- Add to conversation context that bot should remind users it's AI if asked about human-like behaviors
+- Remind users you're AI if they ask about human-like behaviors
+
+CONVERSATION APPROACH:
+- NEW conversations: Greet warmly → introduce as AI assistant → ask how to help
+- CONTINUING conversations: Be natural, don't repeat introductions
+- Customer questions: Understand their need first → then provide helpful info
+- Product inquiries: Ask what they're looking for → match to their needs
+- NEVER immediately list all products when someone says "hello"
+
+ANTI-SPAM GUIDELINES:
+1. Don't overwhelm with information - be concise and relevant
+2. Ask ONE clarifying question at a time
+3. Only mention products when user shows specific interest
+4. Don't repeat the same information in conversations
+5. Keep WhatsApp messages under 200 words typically
+6. Focus on what the user actually asked for
 
 CRITICAL ANTI-HALLUCINATION RULES:
 1. NEVER assume or make up product details like price, category, description, brand, warranty, etc.
@@ -76,6 +103,19 @@ INFORMATION GATHERING APPROACH:
 - Always confirm details before proceeding: "Let me confirm: [list all details]"
 - If user seems uncertain, help them think through the details
 
+CONVERSATION EXAMPLES:
+
+❌ BAD (Spammy):
+User: "Hello"
+Bot: "Welcome to Mama Jane Electronics! We have phones, laptops, accessories. Here are our products: iPhone 13 - KSh 75,000, Samsung A54 - KSh 35,000..."
+
+✅ GOOD (Natural):
+User: "Hello"
+Bot: "Hello! I'm Sasabot, an AI assistant for Mama Jane Electronics. How can I help you today?"
+
+User: "What phones do you have?"
+Bot: "We have several phones available. What type of phone are you looking for? Any specific brand or price range in mind?"
+
 ERROR HANDLING WITH CONTEXT:
 - When functions return error_type: "product_not_found", use the context.available_products
 - Show users what products ARE available, not just what's missing
@@ -96,6 +136,9 @@ You can help with:
 - Real-time data from JSON database
 - M-Pesa payments and delivery coordination
 - Business analytics and reporting
+- M-Pesa payment processing for orders
+- Payment status tracking and troubleshooting
+- Payment retry and cancellation options
 
 IMPORTANT GUIDELINES:
 1. Always check user's role (vendor/customer) before suggesting actions
@@ -105,11 +148,79 @@ IMPORTANT GUIDELINES:
 5. Format prices in Kenyan Shillings (KSh) with proper comma formatting
 6. Be proactive in suggesting next steps with correct product IDs
 
+## Business Analytics Capabilities
+
+You have access to powerful business analytics tools:
+
+1. **get_business_stats(business_id)** - Comprehensive business overview
+   - Revenue trends (last 30 days)
+   - Top selling products
+   - Customer metrics (retention, new customers)
+   - Order performance
+   - Stock alerts with sales velocity
+
+2. **get_sales_analytics(business_id, period)** - Detailed sales analysis
+   - Best/worst performing products
+   - Category performance comparison
+   - Daily sales patterns
+   - Payment method breakdown
+
+## When to Use Analytics
+
+- User asks: "business stats", "how's my business", "sales report"
+- User requests: "revenue trends", "top products", "customer metrics"
+- User inquires: "product performance", "sales analysis", "analytics"
+- Automatically for weekly/monthly business reviews
+
+## How to Format Analytics Responses
+
+### For WhatsApp Format (Primary):
+- Use emojis for visual hierarchy: 🏪💰📊👥📦⚠️💡🎯
+- Format currency as "KSh X,XXX" with commas
+- Show trends with arrows: 📈📉➡️
+- Use traffic lights: 🔴🟡🟢 for priority/status
+- Keep sections concise and scannable
+- Include actionable insights and next steps
+
+### Structure:
+```
+🏪 [BUSINESS NAME]
+📊 [Report Type] - [Period]
+
+💰 [KEY METRICS SECTION]
+[Revenue, growth, etc.]
+
+🔥 [TOP PRODUCTS SECTION]
+[Numbered list of top performers]
+
+👥 [CUSTOMER INSIGHTS]
+[Customer metrics and patterns]
+
+📦 [OPERATIONAL METRICS]
+[Orders, fulfillment, etc.]
+
+⚠️ [ALERTS & PRIORITIES]
+[Stock alerts, urgent actions]
+
+💡 [KEY INSIGHTS]
+[Main takeaways]
+
+🎯 [NEXT ACTIONS]
+[Specific recommendations]
+```
+
 CONTEXT AWARENESS:
 - Remember what the user is trying to accomplish
 - Offer relevant follow-up actions with specific product references
 - Explain the impact of changes (e.g., "This will update your JSON database")
 - When products aren't found, use available context to suggest alternatives
+
+CONVERSATION STATE AWARENESS:
+- Pay attention to conversation context provided in system messages
+- Don't repeat introductions in continuing conversations
+- Adapt responses based on message count and conversation flow
+- Be more concise in follow-up messages
+- Remember what's already been discussed in the conversation
 
 The system works with real JSON files that persist data between sessions."""
 
@@ -334,6 +445,125 @@ The system works with real JSON files that persist data between sessions."""
                     "properties": {},
                     "required": []
                 }
+            },
+            {
+                "name": "get_enhanced_business_stats",
+                "description": "Get comprehensive business statistics including revenue trends, top products, customer metrics, and stock alerts",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "business_id": {"type": "string", "description": "Business ID to analyze"}
+                    },
+                    "required": ["business_id"]
+                }
+            },
+            {
+                "name": "get_sales_analytics", 
+                "description": "Get detailed sales analytics including product performance, category analysis, and sales patterns",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "business_id": {"type": "string", "description": "Business ID to analyze"},
+                        "period": {
+                            "type": "string",
+                            "enum": ["daily", "weekly", "monthly", "quarterly", "all"],
+                            "description": "Analysis period",
+                            "default": "monthly"
+                        }
+                    },
+                    "required": ["business_id"]
+                }
+            },
+            {
+                "name": "initiate_mpesa_payment",
+                "description": "Start M-Pesa payment process for a customer order",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "order_id": {
+                            "type": "string",
+                            "description": "Order ID to pay for (e.g., ORD001)"
+                        },
+                        "customer_phone": {
+                            "type": "string",
+                            "description": "Customer's M-Pesa phone number (optional, will use order phone)"
+                        }
+                    },
+                    "required": ["order_id"]
+                }
+            },
+            {
+                "name": "check_payment_status", 
+                "description": "Check the current status of a payment transaction",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "payment_id": {
+                            "type": "string",
+                            "description": "Payment ID to check (e.g., PAY001)"
+                        }
+                    },
+                    "required": ["payment_id"]
+                }
+            },
+            {
+                "name": "cancel_payment",
+                "description": "Cancel a pending M-Pesa payment",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "payment_id": {
+                            "type": "string",
+                            "description": "Payment ID to cancel (e.g., PAY001)"
+                        }
+                    },
+                    "required": ["payment_id"]
+                }
+            },
+            {
+                "name": "get_payment_help",
+                "description": "Get help and troubleshooting information for M-Pesa payments",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            },
+            {
+                "name": "retry_payment",
+                "description": "Retry payment for an order after previous failure",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "order_id": {
+                            "type": "string",
+                            "description": "Order ID to retry payment for"
+                        },
+                        "customer_phone": {
+                            "type": "string",
+                            "description": "Customer phone number (optional)"
+                        }
+                    },
+                    "required": ["order_id"]
+                }
+            },
+            {
+                "name": "complete_mpesa_payment",
+                "description": "Complete payment simulation (for demo/testing purposes only)",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "payment_id": {
+                            "type": "string",
+                            "description": "Payment ID to complete"
+                        },
+                        "force_success": {
+                            "type": "boolean",
+                            "description": "Force success or failure (optional)"
+                        }
+                    },
+                    "required": ["payment_id"]
+                }
             }
         ]
 
@@ -394,6 +624,39 @@ The system works with real JSON files that persist data between sessions."""
                 
         except Exception as e:
             return f"❌ Error processing response: {str(e)}"
+    async def _get_enhanced_business_stats(self, **kwargs) -> Dict:
+        """Get enhanced business statistics"""
+        if "business_id" not in kwargs:
+            kwargs["business_id"] = cl.user_session.get("business_id")
+        
+        try:
+            result = get_enhanced_business_stats(kwargs["business_id"])
+            return result
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Error getting enhanced business stats: {str(e)}",
+                "error_type": "system_error"
+            }
+
+    async def _get_sales_analytics(self, **kwargs) -> Dict:
+        """Get detailed sales analytics"""
+        if "business_id" not in kwargs:
+            kwargs["business_id"] = cl.user_session.get("business_id")
+        
+        # Set default period if not provided
+        if "period" not in kwargs:
+            kwargs["period"] = "monthly"
+        
+        try:
+            result = get_sales_analytics(kwargs["business_id"], kwargs["period"])
+            return result
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Error getting sales analytics: {str(e)}",
+                "error_type": "system_error"
+            }
 
     async def _execute_function_call(self, function_call) -> Any:
         """Execute the function call requested by LLM"""
@@ -417,7 +680,15 @@ The system works with real JSON files that persist data between sessions."""
                 "search_products": self._search_products,
                 "place_order": self._place_order,
                 "get_order_status": self._get_order_status,
-                "get_database_stats": self._get_database_stats
+                "get_database_stats": self._get_database_stats,
+                "get_enhanced_business_stats": self._get_enhanced_business_stats,
+                "get_sales_analytics": self._get_sales_analytics,
+                "initiate_mpesa_payment": self._initiate_mpesa_payment,
+                "check_payment_status": self._check_payment_status,
+                "cancel_payment": self._cancel_payment,
+                "get_payment_help": self._get_payment_help,
+                "retry_payment": self._retry_payment,
+                "complete_mpesa_payment": self._complete_mpesa_payment
             }
             
             if function_name in function_map:
@@ -783,3 +1054,27 @@ The system works with real JSON files that persist data between sessions."""
     async def _get_database_stats(self) -> Dict:
         """Get database statistics"""
         return db.get_stats()
+    
+    async def _initiate_mpesa_payment(self, **kwargs) -> Dict:
+        """Initiate M-Pesa payment"""
+        return initiate_mpesa_payment_handler(**kwargs)
+
+    async def _check_payment_status(self, **kwargs) -> Dict:
+        """Check payment status"""
+        return check_payment_status_handler(**kwargs)
+
+    async def _cancel_payment(self, **kwargs) -> Dict:
+        """Cancel payment"""
+        return cancel_payment_handler(**kwargs)
+
+    async def _get_payment_help(self, **kwargs) -> Dict:
+        """Get payment help"""
+        return get_payment_help_handler(**kwargs)
+
+    async def _retry_payment(self, **kwargs) -> Dict:
+        """Retry payment"""
+        return retry_payment_handler(**kwargs)
+
+    async def _complete_mpesa_payment(self, **kwargs) -> Dict:
+        """Complete payment simulation"""
+        return complete_mpesa_payment_handler(**kwargs)

@@ -3,8 +3,7 @@ DONE 2. there is an issue with how the agent is referrign to products (e.g: wher
 DONE: 4. the bot should introduce itself as a bot (to avoid being banned)
 DONE 8. dockerelizing the system (apis)
 DONE 6. Integrate with WhatsApp
-
-DONE 8. Basic business metrics/stats (I am still debugging this)
+DONE 8. Basic business metrics/stats.
 
 PARTIALLY DONE 7. Look into deploying and cloud
 8. Add invoice features for clients.

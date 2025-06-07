@@ -483,6 +483,111 @@ class JSONDatabase:
         except Exception:
             return "Error generating quick reference"
 
+    # =============================================================================
+    # PAYMENTS (ADD TO EXISTING CLASS)
+    # =============================================================================
+    
+    def get_payments(self) -> List[Dict]:
+        """Load payments from JSON file"""
+        return self.load_json('payments')
+    
+    def save_payments(self, payments: List[Dict]) -> bool:
+        """Save payments to JSON file"""
+        return self.save_json('payments', payments)
+    
+    def get_payment_by_id(self, payment_id: str) -> Optional[Dict]:
+        """Find a payment by ID"""
+        payments = self.get_payments()
+        for payment in payments:
+            if payment.get('payment_id') == payment_id:
+                return payment
+        return None
+    
+    def get_payments_by_order(self, order_id: str) -> List[Dict]:
+        """Get all payments for a specific order"""
+        payments = self.get_payments()
+        return [p for p in payments if p.get('order_id') == order_id]
+    
+    def get_payments_by_customer(self, customer_phone: str) -> List[Dict]:
+        """Get all payments for a specific customer"""
+        payments = self.get_payments()
+        return [p for p in payments if p.get('customer_phone') == customer_phone]
+    
+    def add_payment(self, payment: Dict) -> bool:
+        """Add a new payment record"""
+        payments = self.get_payments()
+        
+        # Generate new ID if not provided
+        if 'payment_id' not in payment:
+            existing_numbers = []
+            for p in payments:
+                payment_id = p.get('payment_id', '')
+                if payment_id.startswith('PAY'):
+                    try:
+                        num = int(payment_id[3:])
+                        existing_numbers.append(num)
+                    except ValueError:
+                        pass
+            
+            new_number = max(existing_numbers, default=0) + 1
+            payment['payment_id'] = f"PAY{new_number:03d}"
+        
+        # Add timestamp
+        if 'initiated_at' not in payment:
+            payment['initiated_at'] = datetime.now().isoformat()
+        
+        payments.append(payment)
+        return self.save_payments(payments)
+    
+    def update_payment_status(self, payment_id: str, status: str, **additional_fields) -> bool:
+        """Update payment status and additional fields"""
+        payments = self.get_payments()
+        
+        for i, payment in enumerate(payments):
+            if payment.get('payment_id') == payment_id:
+                payments[i]['status'] = status
+                payments[i]['updated_at'] = datetime.now().isoformat()
+                
+                # Add status-specific timestamps and fields
+                if status == 'completed':
+                    payments[i]['completed_at'] = datetime.now().isoformat()
+                elif status == 'failed':
+                    payments[i]['failed_at'] = datetime.now().isoformat()
+                elif status == 'cancelled':
+                    payments[i]['cancelled_at'] = datetime.now().isoformat()
+                
+                # Add any additional fields
+                for key, value in additional_fields.items():
+                    payments[i][key] = value
+                
+                return self.save_payments(payments)
+        
+        print(f"❌ Payment with ID {payment_id} not found")
+        return False
+    
+    # =============================================================================
+    # ENHANCED ORDER METHODS FOR PAYMENT INTEGRATION
+    # =============================================================================
+    
+    def update_order_payment_status(self, order_id: str, payment_status: str, payment_id: str = None) -> bool:
+        """Update order payment status"""
+        orders = self.get_orders()
+        
+        for i, order in enumerate(orders):
+            if order.get('id') == order_id:
+                orders[i]['payment_status'] = payment_status
+                orders[i]['updated_at'] = datetime.now().isoformat()
+                
+                if payment_id:
+                    orders[i]['payment_id'] = payment_id
+                
+                if payment_status == 'completed':
+                    orders[i]['payment_completed_at'] = datetime.now().isoformat()
+                
+                return self.save_orders(orders)
+        
+        print(f"❌ Order with ID {order_id} not found")
+        return False
 
 # =============================================================================
 # GLOBAL DATABASE INSTANCE
@@ -504,3 +609,4 @@ def initialize_database(data_dir: str = "data") -> JSONDatabase:
     global db
     db = JSONDatabase(data_dir)
     return db
+

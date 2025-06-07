@@ -1,0 +1,31 @@
+[
+    {
+      "payment_id": "PAY001",
+      "order_id": "ORD001",
+      "customer_phone": "+254712345678",
+      "amount": 15200,
+      "method": "mpesa",
+      "status": "completed",
+      "transaction_id": "NLJ7RT61SV",
+      "initiated_at": "2024-01-15T10:30:00Z",
+      "completed_at": "2024-01-15T10:31:23Z",
+      "mpesa_phone": "+254712345678",
+      "merchant_reference": "ORD001",
+      "processing_delay": 23
+    },
+    {
+      "payment_id": "PAY002",
+      "order_id": "ORD002", 
+      "customer_phone": "+254798765432",
+      "amount": 8500,
+      "method": "mpesa",
+      "status": "failed",
+      "transaction_id": null,
+      "initiated_at": "2024-01-14T15:45:00Z",
+      "completed_at": "2024-01-14T15:46:12Z",
+      "mpesa_phone": "+254798765432",
+      "merchant_reference": "ORD002",
+      "processing_delay": 18,
+      "failure_reason": "Insufficient M-Pesa balance"
+    }
+  ]
