@@ -14,7 +14,8 @@ import os
 from utils.simple_db import db
 from .vendor_tools import (
     add_product_handler, show_products_handler, update_product_handler, 
-    delete_product_handler, get_business_stats, get_low_stock_products
+    delete_product_handler, get_business_stats, get_low_stock_products,
+    get_enhanced_business_stats, get_sales_analytics 
 )
 from .customer_tools import (
     browse_products_handler, search_products_handler, 
@@ -104,6 +105,117 @@ IMPORTANT GUIDELINES:
 4. When users seem unsure, offer to help them choose vendor or customer mode
 5. Format prices in Kenyan Shillings (KSh) with proper comma formatting
 6. Be proactive in suggesting next steps with correct product IDs
+
+
+## Business Analytics Capabilities
+
+You have access to powerful business analytics tools:
+
+1. **get_enhanced_business_stats(business_id)** - Comprehensive business overview
+   - Revenue trends (last 30 days)
+   - Top selling products
+   - Customer metrics (retention, new customers)
+   - Order performance
+   - Stock alerts with sales velocity
+
+2. **get_sales_analytics(business_id, period)** - Detailed sales analysis
+   - Best/worst performing products
+   - Category performance comparison
+   - Daily sales patterns
+   - Payment method breakdown
+
+## When to Use Analytics
+
+- User asks: "business stats", "how's my business", "sales report"
+- User requests: "revenue trends", "top products", "customer metrics"
+- User inquires: "product performance", "sales analysis", "analytics"
+- Automatically for weekly/monthly business reviews
+
+## How to Format Analytics Responses
+
+### For WhatsApp Format (Primary):
+- Use emojis for visual hierarchy: 🏪💰📊👥📦⚠️💡🎯
+- Format currency as "KSh X,XXX" with commas
+- Show trends with arrows: 📈📉➡️
+- Use traffic lights: 🔴🟡🟢 for priority/status
+- Keep sections concise and scannable
+- Include actionable insights and next steps
+
+### Structure:
+```
+🏪 [BUSINESS NAME]
+📊 [Report Type] - [Period]
+
+💰 [KEY METRICS SECTION]
+[Revenue, growth, etc.]
+
+🔥 [TOP PRODUCTS SECTION]
+[Numbered list of top performers]
+
+👥 [CUSTOMER INSIGHTS]
+[Customer metrics and patterns]
+
+📦 [OPERATIONAL METRICS]
+[Orders, fulfillment, etc.]
+
+⚠️ [ALERTS & PRIORITIES]
+[Stock alerts, urgent actions]
+
+💡 [KEY INSIGHTS]
+[Main takeaways]
+
+🎯 [NEXT ACTIONS]
+[Specific recommendations]
+```
+
+### Example Response Format:
+```
+🏪 MAMA JANE'S ELECTRONICS
+📊 Business Dashboard - January 2025
+
+💰 REVENUE TRENDS (30 days)
+Week 1: KSh 45,000 📈
+Week 2: KSh 52,000 📈
+Week 3: KSh 48,000 📉
+Week 4: KSh 61,000 📈
+Growth: +12.5% vs last month ✅
+
+🔥 TOP 5 SELLING PRODUCTS
+1. iPhone 13 - 8 sold, KSh 600k
+2. Samsung A54 - 12 sold, KSh 420k
+3. AirPods Pro - 15 sold, KSh 225k
+
+👥 CUSTOMER INSIGHTS
+Total: 47 customers (8 new)
+Retention: 32% (15 repeat customers) ✅
+Top Location: Westlands
+
+📦 ORDER PERFORMANCE
+Completion: 94% (47/50 orders) ✅
+Avg Processing: 18 hours ⚡
+
+⚠️ STOCK ALERTS
+🔴 iPhone 13: 2 left - RESTOCK NOW
+🟡 Samsung A54: 5 left - Restock soon
+
+💡 KEY INSIGHT: iPhone demand high but low stock
+
+🎯 NEXT ACTIONS:
+1. Restock iPhone 13 immediately
+2. Follow up with new customers
+```
+
+## Important Guidelines:
+
+1. **Always call analytics functions** when users request business performance data
+2. **Format responses in WhatsApp-friendly style** with emojis and clear sections
+3. **Include actionable insights**, not just raw numbers
+4. **Prioritize urgent alerts** (stock issues, declining trends)
+5. **Use Kenyan context** (KSh currency, local business patterns)
+6. **Keep insights relevant** to SME needs (cash flow, inventory, customers)
+7. **Provide specific next steps** the user can act on immediately
+
+Remember: Transform data into business intelligence that busy Kenyan entrepreneurs can quickly understand and act upon.
 
 CONTEXT AWARENESS:
 - Remember what the user is trying to accomplish
@@ -334,6 +446,34 @@ The system works with real JSON files that persist data between sessions."""
                     "properties": {},
                     "required": []
                 }
+            },
+            {
+                "name": "get_enhanced_business_stats",
+                "description": "Get comprehensive business statistics including revenue trends, top products, customer metrics, and stock alerts",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "business_id": {"type": "string", "description": "Business ID to analyze"}
+                    },
+                    "required": ["business_id"]
+                }
+            },
+            {
+                "name": "get_sales_analytics", 
+                "description": "Get detailed sales analytics including product performance, category analysis, and sales patterns",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "business_id": {"type": "string", "description": "Business ID to analyze"},
+                        "period": {
+                            "type": "string",
+                            "enum": ["daily", "weekly", "monthly", "quarterly", "all"],
+                            "description": "Analysis period",
+                            "default": "monthly"
+                        }
+                    },
+                    "required": ["business_id"]
+                }
             }
         ]
 
@@ -394,6 +534,39 @@ The system works with real JSON files that persist data between sessions."""
                 
         except Exception as e:
             return f"❌ Error processing response: {str(e)}"
+    async def _get_enhanced_business_stats(self, **kwargs) -> Dict:
+        """Get enhanced business statistics"""
+        if "business_id" not in kwargs:
+            kwargs["business_id"] = cl.user_session.get("business_id")
+        
+        try:
+            result = get_enhanced_business_stats(kwargs["business_id"])
+            return result
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Error getting enhanced business stats: {str(e)}",
+                "error_type": "system_error"
+            }
+
+    async def _get_sales_analytics(self, **kwargs) -> Dict:
+        """Get detailed sales analytics"""
+        if "business_id" not in kwargs:
+            kwargs["business_id"] = cl.user_session.get("business_id")
+        
+        # Set default period if not provided
+        if "period" not in kwargs:
+            kwargs["period"] = "monthly"
+        
+        try:
+            result = get_sales_analytics(kwargs["business_id"], kwargs["period"])
+            return result
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Error getting sales analytics: {str(e)}",
+                "error_type": "system_error"
+            }
 
     async def _execute_function_call(self, function_call) -> Any:
         """Execute the function call requested by LLM"""
@@ -417,7 +590,9 @@ The system works with real JSON files that persist data between sessions."""
                 "search_products": self._search_products,
                 "place_order": self._place_order,
                 "get_order_status": self._get_order_status,
-                "get_database_stats": self._get_database_stats
+                "get_database_stats": self._get_database_stats,
+                "get_enhanced_business_stats": self._get_enhanced_business_stats,
+                "get_sales_analytics": self._get_sales_analytics
             }
             
             if function_name in function_map:
@@ -783,3 +958,4 @@ The system works with real JSON files that persist data between sessions."""
     async def _get_database_stats(self) -> Dict:
         """Get database statistics"""
         return db.get_stats()
+
