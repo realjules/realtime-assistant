@@ -9,6 +9,11 @@ from typing import Dict, Any, List
 from utils.simple_db import db
 from datetime import datetime
 
+from .payment_tools import (
+    initiate_mpesa_payment_handler, check_payment_status_handler,
+    get_payment_help_handler, retry_payment_handler
+)
+
 
 def browse_products_handler(params: Dict[str, Any]) -> str:
     """
@@ -429,9 +434,9 @@ def place_order_handler(params: Dict[str, Any]) -> str:
         
         result += f"\n📞 **Next Steps:**\n"
         result += f"1. The business will contact you to confirm the order\n"
-        result += f"2. Payment will be processed via {payment_method.upper()}\n"
-        result += f"3. Your order will be prepared and delivered\n"
-        result += f"4. You can track your order using Order ID: {order_id}\n"
+        result += f"2. To pay now: Type 'pay for order {order_id}'\n"
+        result += f"3. Your order will be prepared after payment\n"
+        result += f"4. Track your order using: 'order status {order_id}'\n"
         
         # Show business contact info
         if business.get('phone'):
@@ -643,6 +648,69 @@ customer_tools = [
                 "customer_phone": {
                     "type": "string",
                     "description": "Customer phone number for verification (optional)"
+                }
+            },
+            "required": ["order_id"]
+        }
+    },
+    {
+        "name": "initiate_mpesa_payment",
+        "description": "Start M-Pesa payment process for an order",
+        "handler": initiate_mpesa_payment_handler,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "order_id": {
+                    "type": "string",
+                    "description": "Order ID to pay for (e.g., ORD001)"
+                },
+                "customer_phone": {
+                    "type": "string",
+                    "description": "Customer's M-Pesa phone number (optional)"
+                }
+            },
+            "required": ["order_id"]
+        }
+    },
+    {
+        "name": "check_payment_status",
+        "description": "Check the current status of a payment",
+        "handler": check_payment_status_handler,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "payment_id": {
+                    "type": "string",
+                    "description": "Payment ID to check status for"
+                }
+            },
+            "required": ["payment_id"]
+        }
+    },
+    {
+        "name": "get_payment_help",
+        "description": "Get help and troubleshooting for M-Pesa payments",
+        "handler": get_payment_help_handler,
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    {
+        "name": "retry_payment",
+        "description": "Retry payment for an order after failure",
+        "handler": retry_payment_handler,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "order_id": {
+                    "type": "string",
+                    "description": "Order ID to retry payment for"
+                },
+                "customer_phone": {
+                    "type": "string",
+                    "description": "Customer phone number (optional)"
                 }
             },
             "required": ["order_id"]

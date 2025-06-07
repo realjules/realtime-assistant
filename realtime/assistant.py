@@ -19,8 +19,15 @@ from .vendor_tools import (
 )
 from .customer_tools import (
     browse_products_handler, search_products_handler, 
-    place_order_handler, get_order_status_handler
+    place_order_handler, get_order_status_handler,
 )
+
+from .payment_tools import (
+    initiate_mpesa_payment_handler, check_payment_status_handler, 
+    cancel_payment_handler, get_payment_help_handler, 
+    retry_payment_handler, complete_mpesa_payment_handler
+)
+
 
 
 class SasabotAssistant:
@@ -97,6 +104,9 @@ You can help with:
 - Real-time data from JSON database
 - M-Pesa payments and delivery coordination
 - Business analytics and reporting
+- M-Pesa payment processing for orders
+- Payment status tracking and troubleshooting
+- Payment retry and cancellation options
 
 IMPORTANT GUIDELINES:
 1. Always check user's role (vendor/customer) before suggesting actions
@@ -111,7 +121,7 @@ IMPORTANT GUIDELINES:
 
 You have access to powerful business analytics tools:
 
-1. **get_enhanced_business_stats(business_id)** - Comprehensive business overview
+1. **get_business_stats(business_id)** - Comprehensive business overview
    - Revenue trends (last 30 days)
    - Top selling products
    - Customer metrics (retention, new customers)
@@ -474,6 +484,97 @@ The system works with real JSON files that persist data between sessions."""
                     },
                     "required": ["business_id"]
                 }
+            },
+            {
+                "name": "initiate_mpesa_payment",
+                "description": "Start M-Pesa payment process for a customer order",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "order_id": {
+                            "type": "string",
+                            "description": "Order ID to pay for (e.g., ORD001)"
+                        },
+                        "customer_phone": {
+                            "type": "string",
+                            "description": "Customer's M-Pesa phone number (optional, will use order phone)"
+                        }
+                    },
+                    "required": ["order_id"]
+                }
+            },
+            {
+                "name": "check_payment_status", 
+                "description": "Check the current status of a payment transaction",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "payment_id": {
+                            "type": "string",
+                            "description": "Payment ID to check (e.g., PAY001)"
+                        }
+                    },
+                    "required": ["payment_id"]
+                }
+            },
+            {
+                "name": "cancel_payment",
+                "description": "Cancel a pending M-Pesa payment",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "payment_id": {
+                            "type": "string",
+                            "description": "Payment ID to cancel (e.g., PAY001)"
+                        }
+                    },
+                    "required": ["payment_id"]
+                }
+            },
+            {
+                "name": "get_payment_help",
+                "description": "Get help and troubleshooting information for M-Pesa payments",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            },
+            {
+                "name": "retry_payment",
+                "description": "Retry payment for an order after previous failure",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "order_id": {
+                            "type": "string",
+                            "description": "Order ID to retry payment for"
+                        },
+                        "customer_phone": {
+                            "type": "string",
+                            "description": "Customer phone number (optional)"
+                        }
+                    },
+                    "required": ["order_id"]
+                }
+            },
+            {
+                "name": "complete_mpesa_payment",
+                "description": "Complete payment simulation (for demo/testing purposes only)",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "payment_id": {
+                            "type": "string",
+                            "description": "Payment ID to complete"
+                        },
+                        "force_success": {
+                            "type": "boolean",
+                            "description": "Force success or failure (optional)"
+                        }
+                    },
+                    "required": ["payment_id"]
+                }
             }
         ]
 
@@ -592,7 +693,13 @@ The system works with real JSON files that persist data between sessions."""
                 "get_order_status": self._get_order_status,
                 "get_database_stats": self._get_database_stats,
                 "get_enhanced_business_stats": self._get_enhanced_business_stats,
-                "get_sales_analytics": self._get_sales_analytics
+                "get_sales_analytics": self._get_sales_analytics,
+                "initiate_mpesa_payment": self._initiate_mpesa_payment,
+                "check_payment_status": self._check_payment_status,
+                "cancel_payment": self._cancel_payment,
+                "get_payment_help": self._get_payment_help,
+                "retry_payment": self._retry_payment,
+                "complete_mpesa_payment": self._complete_mpesa_payment
             }
             
             if function_name in function_map:
@@ -958,4 +1065,27 @@ The system works with real JSON files that persist data between sessions."""
     async def _get_database_stats(self) -> Dict:
         """Get database statistics"""
         return db.get_stats()
+    
+    async def _initiate_mpesa_payment(self, **kwargs) -> Dict:
+        """Initiate M-Pesa payment"""
+        return initiate_mpesa_payment_handler(**kwargs)
 
+    async def _check_payment_status(self, **kwargs) -> Dict:
+        """Check payment status"""
+        return check_payment_status_handler(**kwargs)
+
+    async def _cancel_payment(self, **kwargs) -> Dict:
+        """Cancel payment"""
+        return cancel_payment_handler(**kwargs)
+
+    async def _get_payment_help(self, **kwargs) -> Dict:
+        """Get payment help"""
+        return get_payment_help_handler(**kwargs)
+
+    async def _retry_payment(self, **kwargs) -> Dict:
+        """Retry payment"""
+        return retry_payment_handler(**kwargs)
+
+    async def _complete_mpesa_payment(self, **kwargs) -> Dict:
+        """Complete payment simulation"""
+        return complete_mpesa_payment_handler(**kwargs)
